@@ -1,0 +1,85 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+temp/
+
+# System files
+.DS_Store
+Thumbs.db
+*.pid
+*.seed
+*.pid.lock
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Editor folders and files
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Mac and Linux files
+*.bak
+*.old
+*.orig
+*.rej
+*.~undo-tree~
+*~
+*.sw?
+
+# React specific
+node_modules/
+build/
+coverage/
+public/*.cache
+public/*.json
+public/*.xml
+
+# Testing
+/coverage/
+*.lcov
+*.nyc_output
+scripts/
+test/
+valores-encriptados.txt
+
+# Misc
+.sass-cache/
+connect.lock
+coverage/
+lib-cov/
+.npm/
+.eslintcache
+.parcel-cache
+.cache/
+.pnp
+.pnp.js
+__pycache__/
+
+# Debug files
+debug.log*
