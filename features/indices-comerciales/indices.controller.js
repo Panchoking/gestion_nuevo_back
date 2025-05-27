@@ -1,5 +1,7 @@
 import executeQuery from "../../database/executeQuery.js";
 
+import { format } from 'date-fns';
+
 const getAllIndices = async (req, res) => {
     try {
         console.log("Fetching all indices comerciales");
@@ -171,6 +173,7 @@ const getValidFields = async () => {
 
 // CONSEGUIR UF DEL DIA
 const getDailyUF = async (req, res) => {
+    console.log("getDailyUF");
     try {
         const hoy = format(new Date(), 'yyyy-MM-dd');
 
@@ -221,50 +224,53 @@ const getDailyUF = async (req, res) => {
 };
 
 const getUTM = async (req, res) => {
+    console.log("getUTM");
     try {
-        const hoy = format(new Date(), 'yyyy-MM-dd');
-
-        // ver si existe un registro para hoy
-        const [utmRecord] = await executeQuery(`
-            SELECT fecha, valor FROM valores_tributarios
-            WHERE fecha = ?
-            LIMIT 1
-        `, [hoy]);
+        // Formato año-mes (YYYY-MM) para buscar por mes en lugar de por día
+        const mesActual = format(new Date(), 'yyyy-MM');
         
-        // si hay un valor, devolverlo
-        if (utmRecord && utmRecord.valor) {
+        // Ver si existe un registro para el mes actual
+        const [utmRecord] = await executeQuery(`
+            SELECT fecha, valor_utm FROM valores_tributarios
+            WHERE DATE_FORMAT(fecha, '%Y-%m') = ?
+            ORDER BY fecha DESC
+            LIMIT 1
+        `, [mesActual]);
+        
+        // Si hay un valor para este mes, devolverlo
+        if (utmRecord && utmRecord.valor_utm) {
             return res.status(200).json({
                 success: true,
-                message: "Valor UTM del día encontrado",
+                message: "Valor UTM del mes encontrado",
                 result: {
                     fecha: utmRecord.fecha,
                     valor: utmRecord.valor_utm
                 }
             });
-        } else { // si no hay un valor, fetch desde la API
+        } else { // Si no hay un valor para este mes, fetch desde la API
             /* const api... etc etc
             conseguir valores de la api...
-
+            
+            // Al guardar, usamos el primer día del mes o fecha específica de publicación
             await executeQuery(`
                 INSERT INTO valores_tributarios (fecha, valor_utm) VALUES (?, ?)
-            `, [hoy, valor]);
+            `, [fechaPublicacion, valor_utm]);
 
             return res.status(200).json({
                 success: true,
-                message: "Valor UTM del día obtenido desde la API",
+                message: "Valor UTM del mes obtenido desde la API",
                 result: {
-                    fecha: hoy,
+                    fecha: fechaPublicacion,
                     valor: valor_utm
                 }
             });
-    
             */
         }
     } catch (err) {
-        console.error('Error haciendo fetch del valor UTM del día:', err);
+        console.error('Error haciendo fetch del valor UTM del mes:', err);
         return res.status(500).json({
             success: false,
-            message: 'Error haciendo fetch del valor UTM del día',
+            message: 'Error haciendo fetch del valor UTM del mes',
             error: err.message
         });
     }
