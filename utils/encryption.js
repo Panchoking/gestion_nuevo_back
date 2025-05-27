@@ -27,7 +27,7 @@ export const decrypt = (ciphertext) => {
     const bytes = CryptoJS.AES.decrypt(String(ciphertext), SECRET_KEY);
     return bytes.toString(CryptoJS.enc.Utf8);
   } catch (error) {
-    console.error('Error al desencriptar:', error);
+    //console.error('Error al desencriptar:', error);
     return ciphertext; // En caso de error, devolver el texto original
   }
 };

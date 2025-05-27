@@ -29,6 +29,10 @@ import asignacionRoutes from './features/usuarios/roles/usuarioRol.routes.js';
 import clientesRoutes from './features/clientes/cliente.routes.js';
 import organizacionalRoutes from './features/clientes/organizacional/organizacion.routes.js';
 
+// cmf indicadores
+import indicadoresRoutes from './cmf/indicadores.routes.js';
+
+
 // init
 const app = express();
 
@@ -77,6 +81,8 @@ app.use('/contrato', contratoRoutes);
 app.use('/asignacion', asignacionRoutes);
 app.use('/clientes', clientesRoutes);
 app.use('/organizacion', organizacionalRoutes);
+app.use('/indicadores', indicadoresRoutes);
+
 
 
 export default app;
