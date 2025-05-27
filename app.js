@@ -29,6 +29,9 @@ import asignacionRoutes from './features/usuarios/roles/usuarioRol.routes.js';
 import clientesRoutes from './features/clientes/cliente.routes.js';
 import organizacionalRoutes from './features/clientes/organizacional/organizacion.routes.js';
 
+// indices comerciales
+import indicesRoutes from './features/indices-comerciales/indices.routes.js';
+
 // init
 const app = express();
 
@@ -77,6 +80,6 @@ app.use('/contrato', contratoRoutes);
 app.use('/asignacion', asignacionRoutes);
 app.use('/clientes', clientesRoutes);
 app.use('/organizacion', organizacionalRoutes);
-
+app.use('/indices', indicesRoutes);
 
 export default app;
