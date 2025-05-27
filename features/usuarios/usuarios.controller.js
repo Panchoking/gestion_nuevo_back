@@ -6,10 +6,10 @@ import userService from './usuarios.service.js';
 
 const getUsers = async (req, res) => { // get general
     console.log("getUsers");
-    
+
     // Check if the user is an admin
     const isAdmin = req.user?.is_admin || false;
-    
+
     // Base query with user data
     let query = `
         SELECT 
@@ -26,7 +26,7 @@ const getUsers = async (req, res) => { // get general
         LEFT JOIN rol_plataforma r ON r.id = urp.id_rol_plataforma
         LEFT JOIN datos_personales dp ON dp.id_usuario = u.id
     `;
-    
+
     // Add WHERE clause to filter out dummy and admin users for non-admin users
     if (!isAdmin) {
         query += `
@@ -34,7 +34,7 @@ const getUsers = async (req, res) => { // get general
         AND (u.is_admin IS NULL OR u.is_admin = FALSE)
         `;
     }
-    
+
     try {
         const result = await executeQuery(query);
         res.status(200).json({ success: true, usuarios: result });
@@ -106,142 +106,38 @@ const updateColaborador = async (req, res) => {
     }
 };
 
+const getCount = async (req, res) => {
+    console.log("getColaboradores", req.user);
+    // obtener la plataforma de los headers
+    try {
+        // obtener todos los colaboradores
+        const query = `
+            SELECT COUNT(*) AS count 
+            FROM usuario u
+            WHERE u.is_admin = FALSE AND u.is_dummy = FALSE
+        `;
+
+        const [result] = await executeQuery(query);
+
+        res.status(200).json({
+            success: true,
+            message: "Total de colaboradores obtenidos correctamente.",
+            result: result.count
+        });
+
+    } catch (err) {
+        console.error("Error obteniendo colaboradores:", err.message);
+        res.status(500).json({ success: false, message: "Error al obtener colaboradores." });
+    }
+};
+
 // nueva funcion dependiendo de plataforma
 const getColaboradores = async (req, res) => {
     console.log("getColaboradores", req.user);
     // obtener la plataforma de los headers
-    const plataforma = req.headers['x-plataforma'] || 'CHECK';
-    if (plataforma === 'CHECK') {
-
-        const { pendientes_feriados, pendientes } = req.query;
-        console.log("plataforma CHECK");
-        try {
-
-            const admin = req.user.roles.some(i => // verificar si el usuario es admin en check
-                i.plataforma === 'CHECK' && i.rol === 'ADMINISTRADOR'
-            );
-            console.log("Es admin en check:", admin);
-
-            let areaIds = [];
-            let query = '';
-
-            if (!admin) { // si no es admin en check filtrar con areas
-
-                // obtener area del supervisor
-                const areasRegularResult = await executeQuery(`
-                SELECT id_area_firma as id
-                FROM flujo_supervisores fs
-                JOIN subrol_firma sf ON fs.id_nivel_firma = sf.id
-                WHERE fs.id_usuario = ?;
-                `, [req.user.id]
-                );
-                // obtener áreas como supervisor general
-                const areasGeneralResult = await executeQuery(`
-                SELECT af.id as id
-                FROM supervisor_general sg
-                JOIN cliente c ON sg.id_cliente = c.id
-                JOIN area_firma af ON af.id_cliente = c.id
-                WHERE sg.id_usuario = ?;
-                `, [req.user.id]
-                );
-
-                const areasResult = [...areasRegularResult, ...areasGeneralResult];
-
-                if (!areasResult || areasResult.length === 0) {
-                    return res.status(200).json({ // devolver con status OK para tirar array vacio
-                        success: false,
-                        message: "No tienes áreas asignadas.",
-                        result: []
-                    });
-                }
-
-                // extraer los ids únicos de las áreas (para evitar duplicados)
-                areaIds = [...new Set(areasResult.map(area => area.id))];
-                console.log("areaIds:", areaIds);
-            }
-
-            // consulta base para obtener colaboradores
-            query = `
-                SELECT 
-                    u.id,
-                    dp.rut AS dp_rut,
-                    COALESCE(dp.nombre, '') AS dp_nombre,
-                    COALESCE(dp.apellido, '') AS dp_apellido,
-                    c.cargo AS c_cargo,
-                    p.nombre AS proyecto_nombre,
-                    cc.codigo AS cc_codigo,
-                    dp.correo AS dp_correo,
-                    dp.correo_corporativo AS dp_corporativo,
-                    u.activo, 
-                    c.id_horario as id_horario
-                FROM usuario u
-                INNER JOIN flujo_firmantes ff ON ff.id_usuario = u.id
-                LEFT JOIN datos_personales dp ON dp.id_usuario = u.id
-                LEFT JOIN contrato c ON c.id_usuario = u.id
-                LEFT JOIN centro_costo cc ON cc.id = c.id_centro_costo
-                LEFT JOIN proyecto p ON p.id = cc.id_proyecto
-                
-            `;
-
-            let queryParams = [];
-
-            // filtros si es admin o no
-            if (!admin && areaIds.length > 0) {
-                // generar placeholders para el IN
-                const placeholders = areaIds.map(() => '?').join(',');
-
-                // modificar la consulta para filtrar por areas
-                query += ` WHERE ff.id_area_firma IN (${placeholders})`;
-
-                // agregar las ids a los parametros
-                queryParams = [...areaIds];
-            } else if (admin) {
-                //  no aplicar filtro de area
-                query += ` WHERE 1=1`; // truco para poder concatenar AND despues
-            }
-
-            // filtrar por pendientes
-            if (pendientes) {
-                query += ` AND EXISTS (
-                    SELECT 1
-                    FROM registro r
-                    WHERE r.id_usuario = u.id
-                    AND r.estado = 'Pendiente'
-                )`;
-            }
-
-            // filtrar por pendientes en feriados
-            if (pendientes_feriados) {
-                query += ` AND EXISTS (
-                    SELECT 1
-                    FROM registro r
-                    WHERE r.id_usuario = u.id
-                    AND r.estado = 'Pendiente'
-                    AND r.feriado = 1
-                )`;
-            }
-
-            // Agrupar por usuario para evitar duplicados si está en múltiples flujos
-            query += ` GROUP BY u.id`;
-
-            const colaboradores = await executeQuery(query, queryParams);
-            // no es necesario filtrarlos por rol ya que los busca del flujo de firmantes
-
-            res.status(200).json({
-                success: true,
-                result: colaboradores
-            });
-
-        } catch (err) {
-            console.error("Error obteniendo colaboradores:", err.message);
-            res.status(500).json({ success: false, message: "Error al obtener colaboradores." });
-        }
-    } else if (plataforma === 'GESTION') {
-        console.log("plataforma GESTION");
-
-        try {
-            // obtener todos los colaboradores
-            const query = `
+    try {
+        // obtener todos los colaboradores
+        const query = `
                 SELECT 
                     u.id,
                     u.is_admin,
@@ -269,17 +165,16 @@ const getColaboradores = async (req, res) => {
                 WHERE u.is_admin = FALSE AND u.is_dummy = FALSE
             `;
 
-            const colaboradores = await executeQuery(query);
+        const colaboradores = await executeQuery(query);
 
-            res.status(200).json({
-                success: true,
-                result: colaboradores
-            });
+        res.status(200).json({
+            success: true,
+            result: colaboradores
+        });
 
-        } catch (err) {
-            console.error("Error obteniendo colaboradores:", err.message);
-            res.status(500).json({ success: false, message: "Error al obtener colaboradores." });
-        }
+    } catch (err) {
+        console.error("Error obteniendo colaboradores:", err.message);
+        res.status(500).json({ success: false, message: "Error al obtener colaboradores." });
     }
 };
 
@@ -292,7 +187,6 @@ const getColaboradorPorId = async (req, res) => {
                 u.id, 
                 u.username, 
                 u.activo,
-
                 -- Datos personales
                 dp.id AS id_datos_personales, 
                 dp.nombre AS dp_nombre, 
@@ -364,12 +258,11 @@ const getColaboradorPorId = async (req, res) => {
             return res.status(404).json({ message: 'Colaborador no encontrado' });
         }
 
-        console.log('=======================');
-        console.log('Datos del colaborador por ID:');
-        console.log(JSON.stringify(result, null, 2));
-        console.log('=======================');
-
-        res.status(200).json(result);
+        res.status(200).json({
+            success: true,
+            message: 'Colaborador encontrado',
+            result
+        });
     } catch (error) {
         console.error('Error al obtener colaborador por ID:', error.message);
         res.status(500).json({ success: false, message: 'Error al obtener colaborador' });
@@ -377,9 +270,9 @@ const getColaboradorPorId = async (req, res) => {
 };
 
 
-
 // Eliminar colaborador y toda su información relacionada (incluye logs)
 const deleteColaborador = async (req, res) => {
+    console.log("deleteColaborador");
     try {
         const { id } = req.params;
         const usuarioId = Number(id);
@@ -739,7 +632,7 @@ const updateEstadoColaborador = async (req, res) => {
     let { activo } = req.body;
     try {
         // actualizar estado en service
-        const resultado = await cambiarEstadoUsuario(id, activo);
+        const resultado = await userService.cambiarEstadoUsuario(id, activo);
 
         res.status(200).json({
             success: true,
@@ -757,6 +650,7 @@ const updateEstadoColaborador = async (req, res) => {
 };
 
 export {
+    getCount,
     getUsers,
     getAuthData,
     postColaborador,

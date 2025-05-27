@@ -12,7 +12,8 @@ import {
     getSupervisores,
     getPerfil,
     updatePassword,
-    getUsers
+    getUsers,
+    getCount
 } from './usuarios.controller.js';
 
 // middlewares
@@ -26,6 +27,10 @@ router.get('/auth-data', authenticateToken, getAuthData); // datos de inicio de 
 router.get('/', authenticateToken, verificarAcceso([ // getUsers (general)
     { plataforma: 'GESTION', roles: ['RRHH'] },
 ]), getUsers);
+
+router.get('/count', authenticateToken, verificarAcceso([
+    { plataforma: 'GESTION', roles: ['RRHH'] },
+]), getCount);
 
 // supervisores 
 router.get('/supervisores', authenticateToken, verificarAcceso([
