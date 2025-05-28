@@ -56,6 +56,8 @@ const updateIndexByField = async (req, res) => {
     const { field } = req.params;
     const { value } = req.body;
 
+    console.log(`Updating index value for field: ${field} with value: ${value}`);
+
     try {
         // Validate that field exists in table
         const validFields = await getValidFields();
