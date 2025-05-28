@@ -63,6 +63,8 @@ const updateIndexByField = async (req, res) => {
     const { field } = req.params;
     const { value } = req.body;
 
+    console.log(`Updating index value for field: ${field} with value: ${value}`);
+
     try {
         // Validate that field exists in table
         const validFields = await getValidFields();
@@ -180,6 +182,7 @@ const getValidFields = async () => {
 
 // CONSEGUIR UF DEL DIA - COMBINADO CON API
 const getDailyUF = async (req, res) => {
+    console.log("getDailyUF");
     try {
         const hoy = format(new Date(), 'yyyy-MM-dd');
 
@@ -251,21 +254,23 @@ const getDailyUF = async (req, res) => {
 
 // CONSEGUIR UTM DEL DIA - COMBINADO CON API
 const getUTM = async (req, res) => {
+    console.log("getUTM");
     try {
-        const hoy = format(new Date(), 'yyyy-MM-dd');
-
-        // ver si existe un registro para hoy
+        // Formato año-mes (YYYY-MM) para buscar por mes en lugar de por día
+        const mesActual = format(new Date(), 'yyyy-MM');
+        
+        // Ver si existe un registro para el mes actual
         const [utmRecord] = await executeQuery(`
             SELECT fecha, valor_utm FROM valores_tributarios
             WHERE fecha = ?
             LIMIT 1
-        `, [hoy]);
+        `, [mesActual]);
         
         // si hay un valor, devolverlo
         if (utmRecord && utmRecord.valor_utm) {
             return res.status(200).json({
                 success: true,
-                message: "Valor UTM del día encontrado",
+                message: "Valor UTM del mes encontrado",
                 result: {
                     fecha: utmRecord.fecha,
                     valor: utmRecord.valor_utm
@@ -311,10 +316,10 @@ const getUTM = async (req, res) => {
             }
         }
     } catch (err) {
-        console.error('Error haciendo fetch del valor UTM del día:', err);
+        console.error('Error haciendo fetch del valor UTM del mes:', err);
         return res.status(500).json({
             success: false,
-            message: 'Error haciendo fetch del valor UTM del día',
+            message: 'Error haciendo fetch del valor UTM del mes',
             error: err.message
         });
     }

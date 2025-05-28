@@ -10,6 +10,13 @@ const pool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 10, // máximo de conexiones en el pool
     queueLimit: 0 // sin limite para conexiones en cola
+
+    
 });
+
+//console.log("USER:", process.env.DB_USER);
+//console.log("PWD:", process.env.DB_PWD);
+//console.log(pool);
+
 
 export default pool.promise();
