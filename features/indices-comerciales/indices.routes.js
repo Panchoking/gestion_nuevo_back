@@ -4,7 +4,6 @@ import {
   getAllIndices, 
   getIndexByField, 
   updateIndexByField,
-  updateMultipleIndices,
   getDailyUF,
   getUTM,
   obtenerYGuardarIPC,
@@ -18,16 +17,15 @@ const router = express.Router();
 // Public routes
 router.get('/generales/', authenticateToken, getAllIndices);
 router.get('/generales/:field', authenticateToken, getIndexByField);
-
-// Protected routes - only admins or users with RRHH role
 router.put('/generales/:field', authenticateToken, verificarAcceso(), updateIndexByField);
-router.put('/generales/', authenticateToken, verificarAcceso(), updateMultipleIndices);
 
+
+
+// YA NO SE DEBERIAN USAR
 // UF Y UTM
 router.get('/uf', authenticateToken, getDailyUF);
 router.get('/utm', authenticateToken, getUTM);
 router.get('/utm/historial', authenticateToken, getHistorialUTM); // ← Nueva ruta para historial
-
 
 // IPC (opcional) - Solo admins pueden actualizar IPC
 router.post('/ipc/actualizar', authenticateToken, verificarAcceso(), async (req, res) => {
