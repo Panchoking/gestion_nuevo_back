@@ -252,19 +252,20 @@ const getDailyUF = async (req, res) => {
     }
 };
 
-// CONSEGUIR UTM DEL DIA - COMBINADO CON API
+// CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
 const getUTM = async (req, res) => {
-    console.log("getUTM");
     try {
-        // Formato año-mes (YYYY-MM) para buscar por mes en lugar de por día
-        const mesActual = format(new Date(), 'yyyy-MM');
-        
-        // Ver si existe un registro para el mes actual
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const currentMonth = currentDate.getMonth() + 1; // getMonth() devuelve 0-11, necesitamos 1-12
+
+        // Buscar UTM del mes actual (puede estar en cualquier día del mes)
         const [utmRecord] = await executeQuery(`
             SELECT fecha, valor_utm FROM valores_tributarios
-            WHERE fecha = ?
+            WHERE YEAR(fecha) = ? AND MONTH(fecha) = ?
+            ORDER BY fecha DESC
             LIMIT 1
-        `, [mesActual]);
+        `, [currentYear, currentMonth]);
         
         // si hay un valor, devolverlo
         if (utmRecord && utmRecord.valor_utm) {
@@ -297,7 +298,7 @@ const getUTM = async (req, res) => {
 
                     return res.status(200).json({
                         success: true,
-                        message: "Valor UTM del día obtenido desde la API",
+                        message: "Valor UTM del mes obtenido desde la API",
                         result: {
                             fecha: fecha,
                             valor: valor
