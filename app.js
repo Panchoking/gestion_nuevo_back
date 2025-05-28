@@ -32,6 +32,10 @@ import organizacionalRoutes from './features/clientes/organizacional/organizacio
 // indices comerciales
 import indicesRoutes from './features/indices-comerciales/indices.routes.js';
 
+// cmf indicadores
+import indicadoresRoutes from './cmf/indicadores.routes.js';
+
+
 // init
 const app = express();
 
@@ -81,5 +85,8 @@ app.use('/asignacion', asignacionRoutes);
 app.use('/clientes', clientesRoutes);
 app.use('/organizacion', organizacionalRoutes);
 app.use('/indices', indicesRoutes);
+app.use('/indicadores', indicadoresRoutes);
+
+
 
 export default app;

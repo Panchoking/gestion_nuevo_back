@@ -231,7 +231,13 @@ const executeQuery = async (query, values) => {
         
         // Pasar la consulta original al desencriptador
         const decryptedResults = decryptSensitiveResults(results, query);
+        /*console.log(query);
+        console.log(values);
+         const [results2] = await pool.query(query, values);
+         console.log(results2);*/
+        
         return decryptedResults;
+        
     } catch (err) {
         console.error("error ejecutando consulta:", err.message);
         console.log(query);
