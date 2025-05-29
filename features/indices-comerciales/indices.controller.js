@@ -103,19 +103,33 @@ const updateIndexByField = async (req, res) => {
     }
 };
 
-// OBTENER TRAMOS DEL IUSC
 const getTramosIUSC = async (req, res) => {
     try {
-        console.log("Fetching IUSC tramos");
-
-        // consulta a la base de datos para obtener todos los tramos
-        const tramosIUSC = await executeQuery(`
+        const tramos = await executeQuery(`
+            SELECT tramo, desde_utm, hasta_utm, tasa, rebajar_utm, tasa_maxima 
+            FROM valores_iusc 
+            ORDER BY tramo
         `);
+
+        return res.status(200).json({
+            success: true,
+            result: tramos
+        });
+    } catch (error) {
+        console.error('Error al obtener tramos IUSC:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al obtener tramos IUSC',
+            error: error.message
+        });
     }
 };
 
-
 // CONSEGUIR UF DEL DIA - COMBINADO CON API
+// backend - getDailyUF
+
+// backend - getDailyUF
+
 const getDailyUF = async (req, res) => {
     try {
         const ufData = await cmfClient.getDailyUF();
@@ -147,81 +161,38 @@ const getDailyUF = async (req, res) => {
     }
 };
 
-
-// FUNCIONES QUE DEBERIAN ELIMINARSE 
 // CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
 const getUTM = async (req, res) => {
     try {
-        // obtener año y mes actual
-        const now = new Date();
-        const [currentYear, currentMonth] = [now.getFullYear(), now.getMonth() + 1];
+        const url = `${BASE_URL}/api-sbifv3/recursos_api/utm?apikey=${API_KEY}&formato=json`;
+        const response = await axios.get(url);
+        const utm = response.data.UTMs?.[0];
 
-        // buscar UTM actual sin considerar el dia
-        const [utmRecord] = await executeQuery(`
-            SELECT fecha, valor_utm FROM valores_tributarios
-            WHERE YEAR(fecha) = ? AND MONTH(fecha) = ?
-            ORDER BY fecha DESC
-            LIMIT 1
-        `, [currentYear, currentMonth]);
-
-        // si hay un valor, devolverlo
-        if (utmRecord && utmRecord.valor_utm) {
-            return res.status(200).json({
-                success: true,
-                message: "Valor UTM del mes encontrado",
-                result: {
-                    fecha: utmRecord.fecha,
-                    valor: utmRecord.valor_utm
-                }
+        if (!utm) {
+            return res.status(500).json({
+                success: false,
+                message: 'No se pudo obtener valor UTM desde la API'
             });
-        } else {
-            // si no hay un valor, fetch desde la API
-            try {
-                const url = `${BASE_URL}/api-sbifv3/recursos_api/utm?apikey=${API_KEY}&formato=json`;
-                const response = await axios.get(url);
-                const utm = response.data.UTMs?.[0];
-
-                if (utm) {
-                    const fecha = new Date(utm.Fecha).toISOString().split('T')[0];
-                    const valor = parseFloat(utm.Valor.replace(/\./g, '').replace(',', '.'));
-
-                    // guardar en la base de datos
-                    await executeQuery(`
-                        INSERT INTO valores_tributarios (fecha, valor_utm) VALUES (?, ?)
-                        ON DUPLICATE KEY UPDATE valor_utm = VALUES(valor_utm)
-                    `, [fecha, valor]);
-
-                    console.log(`[UTM] UTM insertada/actualizada: ${fecha} - ${valor}`);
-
-                    return res.status(200).json({
-                        success: true,
-                        message: "Valor UTM del mes obtenido desde la API",
-                        result: {
-                            fecha: fecha,
-                            valor: valor
-                        }
-                    });
-                } else {
-                    throw new Error('No se pudo obtener valor UTM de la API');
-                }
-            } catch (apiError) {
-                console.error('Error llamando a la API de UTM:', apiError);
-                return res.status(500).json({
-                    success: false,
-                    message: 'Error obteniendo valor UTM desde la API',
-                    error: apiError.message
-                });
-            }
         }
-    } catch (err) {
-        console.error('Error haciendo fetch del valor UTM del mes:', err);
+
+        const fecha = new Date(utm.Fecha).toISOString().split('T')[0];
+        const valor = parseFloat(utm.Valor.replace(/\./g, '').replace(',', '.'));
+
+        return res.status(200).json({
+            success: true,
+            result: { fecha, valor }
+        });
+
+    } catch (error) {
+        console.error('Error obteniendo UTM desde la API:', error.message);
         return res.status(500).json({
             success: false,
-            message: 'Error haciendo fetch del valor UTM del mes',
-            error: err.message
+            message: 'Error obteniendo valor UTM desde la API',
+            error: error.message
         });
     }
 };
+
 
 
 // CONSEGUIR HISTORICO UTM DE LOS ULTIMOS 6 MESES
@@ -262,7 +233,7 @@ const getHistorialUTM = async (req, res) => {
 
 
 // FUNCIÓN ADICIONAL PARA OBTENER Y GUARDAR IPC (del segundo código)
-const obtenerYGuardarIPC = async () => {
+const obtenerIPC = async (req, res) => {
     try {
         const currentYear = new Date().getFullYear() - 1;
         const url = `${BASE_URL}/api-sbifv3/recursos_api/ipc/${currentYear}?apikey=${API_KEY}&formato=json`;
@@ -271,33 +242,38 @@ const obtenerYGuardarIPC = async () => {
         const ipcData = response.data.IPCs || [];
 
         if (ipcData.length < 12) {
-            throw new Error('No hay suficientes datos de IPC mensual para calcular el anual');
+            return res.status(400).json({
+                success: false,
+                message: 'No hay suficientes datos de IPC mensual para calcular el anual'
+            });
         }
 
-        // Sumar los valores mensuales (convertidos a número)
         const acumuladoAnual = ipcData.reduce((acc, item) => {
             const valor = parseFloat(item.Valor.replace(',', '.'));
             return acc + (isNaN(valor) ? 0 : valor);
         }, 0);
 
-        // Guardar en base de datos
-        const query = `
-            INSERT INTO indices_comerciales (ipc)
-            VALUES (?)
-            ON DUPLICATE KEY UPDATE ipc = VALUES(ipc);
-        `;
+        const ipcAnual = parseFloat(acumuladoAnual.toFixed(2));
 
-        await executeQuery(query, [acumuladoAnual]);
-
-        console.log(`[IPC] Acumulado anual insertado/actualizado: ${acumuladoAnual.toFixed(2)}%`);
-
-        return { ipcAnual: parseFloat(acumuladoAnual.toFixed(2)) };
+        return res.status(200).json({
+            success: true,
+            message: 'IPC acumulado anual obtenido correctamente',
+            result: {
+                año: currentYear,
+                ipcAnual
+            }
+        });
 
     } catch (error) {
-        console.error("Error al obtener o guardar IPC acumulado anual:", error.message);
-        throw error;
+        console.error("Error al obtener IPC anual:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al obtener IPC anual',
+            error: error.message
+        });
     }
 };
+
 
 export {
     getAllIndices,
@@ -305,6 +281,7 @@ export {
     updateIndexByField,
     getDailyUF,
     getUTM,
-    obtenerYGuardarIPC,
-    getHistorialUTM
+    obtenerIPC,
+    getHistorialUTM,
+    getTramosIUSC
 };
