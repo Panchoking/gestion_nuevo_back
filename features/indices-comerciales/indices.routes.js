@@ -8,7 +8,8 @@ import {
   getUTM,
   obtenerIPC,
   getHistorialUTM,
-  getTramosIUSC 
+  getTramosIUSC,
+  getAFP
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -20,17 +21,18 @@ router.get('/generales/', authenticateToken, getAllIndices);
 router.get('/generales/:field', authenticateToken, getIndexByField);
 router.put('/generales/:field', authenticateToken, verificarAcceso(), updateIndexByField);
 
-
-
+// AFP
+router.get('/afp', authenticateToken, getAFP);
 
 // UF Y UTM
 router.get('/uf', getDailyUF);
 router.get('/utm', authenticateToken, getUTM);
-router.get('/utm/historial', authenticateToken, getHistorialUTM); // ← Nueva ruta para historial
-
+router.get('/utm/historial', authenticateToken, getHistorialUTM); // Nueva ruta para historial
 
 //iusc
 router.get('/iusc', authenticateToken, getTramosIUSC);
-// IPC (opcional) - Solo admins pueden actualizar IPC
+
+// IPC
 router.get('/ipc/anual', authenticateToken, obtenerIPC);
+
 export default router;

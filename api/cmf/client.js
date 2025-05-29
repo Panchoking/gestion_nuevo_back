@@ -29,6 +29,21 @@ class CMFClient {
             throw new Error('Error al obtener la UF diaria: ' + err.message);
         }
     }
+
+    async getUTM() {
+        try {
+            let endpoint = `/api-sbifv3/recursos_api/utm?apikey=${this.apiKey}&formato=json`
+            const response = await this.axios.get(endpoint);
+            if (response.status === 200) {
+                return response.data;
+            } else {
+                throw new Error(`Error con el fetch de UTM: ${response.statusText}`);
+            }
+        } catch (err) {
+            console.error('Error al obtener la UTM:', err);
+            throw new Error('Error al obtener la UTM: ' + err.message);
+        }
+    }
 }
 
 const cmfClient = new CMFClient();

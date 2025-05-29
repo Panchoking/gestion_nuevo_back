@@ -164,31 +164,31 @@ const getDailyUF = async (req, res) => {
 // CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
 const getUTM = async (req, res) => {
     try {
-        const url = `${BASE_URL}/api-sbifv3/recursos_api/utm?apikey=${API_KEY}&formato=json`;
-        const response = await axios.get(url);
-        const utm = response.data.UTMs?.[0];
-
-        if (!utm) {
-            return res.status(500).json({
+        const utmData = await cmfClient.getUTM();
+        if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
+            return res.status(404).json({
                 success: false,
-                message: 'No se pudo obtener valor UTM desde la API'
+                message: 'No se encontró el valor de la UTM del mes'
             });
         }
 
-        const fecha = new Date(utm.Fecha).toISOString().split('T')[0];
-        const valor = parseFloat(utm.Valor.replace(/\./g, '').replace(',', '.'));
+        const utm = utmData.UTMs[0];
+        console.log('UTM del mes obtenida:', utm);
 
         return res.status(200).json({
             success: true,
-            result: { fecha, valor }
+            message: "Valor UTM del mes encontrado",
+            result: {
+                fecha: utm.Fecha,
+                valor: utm.Valor
+            }
         });
-
-    } catch (error) {
-        console.error('Error obteniendo UTM desde la API:', error.message);
+    } catch (err) {
+        console.error('Error obteniendo UTM del mes:', err);
         return res.status(500).json({
             success: false,
-            message: 'Error obteniendo valor UTM desde la API',
-            error: error.message
+            message: 'Error obteniendo UTM del mes',
+            error: err.message
         });
     }
 };
@@ -199,7 +199,7 @@ const getUTM = async (req, res) => {
 const getHistorialUTM = async (req, res) => {
     try {
         const currentYear = new Date().getFullYear();
-        const url = `${BASE_URL}/api-sbifv3/recursos_api/utm/${currentYear}?apikey=${API_KEY}&formato=json`;
+        const url = `http://api.cmfchile.cl/api-sbifv3/recursos_api/utm/${currentYear}?apikey=${API_KEY}&formato=json`;
 
         const response = await axios.get(url);
         const utms = response.data.UTMs || [];
@@ -236,7 +236,7 @@ const getHistorialUTM = async (req, res) => {
 const obtenerIPC = async (req, res) => {
     try {
         const currentYear = new Date().getFullYear() - 1;
-        const url = `${BASE_URL}/api-sbifv3/recursos_api/ipc/${currentYear}?apikey=${API_KEY}&formato=json`;
+        const url = `http://api.cmfchile.cl/api-sbifv3/recursos_api/ipc/${currentYear}?apikey=${process.env.CMF_API_KEY}&formato=json`;
 
         const response = await axios.get(url);
         const ipcData = response.data.IPCs || [];
@@ -259,8 +259,8 @@ const obtenerIPC = async (req, res) => {
             success: true,
             message: 'IPC acumulado anual obtenido correctamente',
             result: {
-                año: currentYear,
-                ipcAnual
+                year: currentYear,
+                valor: ipcAnual
             }
         });
 
@@ -274,6 +274,29 @@ const obtenerIPC = async (req, res) => {
     }
 };
 
+const getAFP = async (req, res) => {
+    try {
+        const response = await executeQuery('SELECT * FROM AFP ORDER BY id');
+        if (response.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontraron datos de AFP'
+            });
+        }
+        return res.status(200).json({
+            success: true,
+            result: response
+        });
+    } catch (err) {
+        console.error('Error obteniendo datos de AFP:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error obteniendo datos de AFP',
+            error: err.message
+        });
+    }
+};
+
 
 export {
     getAllIndices,
@@ -283,5 +306,6 @@ export {
     getUTM,
     obtenerIPC,
     getHistorialUTM,
-    getTramosIUSC
+    getTramosIUSC,
+    getAFP
 };
