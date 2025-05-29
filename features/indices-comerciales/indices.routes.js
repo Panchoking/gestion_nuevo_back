@@ -23,7 +23,7 @@ router.put('/generales/:field', authenticateToken, verificarAcceso(), updateInde
 
 // YA NO SE DEBERIAN USAR
 // UF Y UTM
-router.get('/uf', authenticateToken, getDailyUF);
+router.get('/uf', getDailyUF);
 router.get('/utm', authenticateToken, getUTM);
 router.get('/utm/historial', authenticateToken, getHistorialUTM); // ← Nueva ruta para historial
 

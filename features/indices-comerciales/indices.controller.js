@@ -1,6 +1,11 @@
 import axios from 'axios';
 import { format } from 'date-fns';
 import dotenv from 'dotenv';
+
+// API
+import cmfClient from "../../api/cmf/client.js"; // cliente para la api CMF
+
+// database
 import executeQuery from "../../database/executeQuery.js";
 
 dotenv.config();
@@ -98,85 +103,52 @@ const updateIndexByField = async (req, res) => {
     }
 };
 
-// FUNCIONES QUE DEBERIAN ELIMINARSE 
+// OBTENER TRAMOS DEL IUSC
+const getTramosIUSC = async (req, res) => {
+    try {
+        console.log("Fetching IUSC tramos");
+
+        // consulta a la base de datos para obtener todos los tramos
+        const tramosIUSC = await executeQuery(`
+        `);
+    }
+};
+
 
 // CONSEGUIR UF DEL DIA - COMBINADO CON API
 const getDailyUF = async (req, res) => {
-    console.log("getDailyUF");
     try {
-        const hoy = format(new Date(), 'yyyy-MM-dd');
-        console.log("Fecha de hoy:", hoy);
-
-        // ver si existe un registro para hoy
-        const [ufRecord] = await executeQuery(`
-            SELECT fecha, valor FROM valor_uf
-            WHERE fecha = ?
-            LIMIT 1
-        `, [hoy]);
-
-        // si hay un valor, devolverlo
-        if (ufRecord && ufRecord.valor) {
-            console.log("Valor UF encontrado en la base de datos");
-            return res.status(200).json({
-                success: true,
-                message: "Valor UF del día encontrado",
-                result: {
-                    fecha: ufRecord.fecha,
-                    valor: ufRecord.valor
-                }
+        const ufData = await cmfClient.getDailyUF();
+        if (!ufData || !ufData.UFs || ufData.UFs.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontró el valor de la UF del día'
             });
-        } else {
-            // si no hay un valor, fetch desde la API
-            try {
-                console.log("No se encontró valor UF en la base de datos, llamando a la API");
-                const url = `${BASE_URL}/api-sbifv3/recursos_api/uf?apikey=${API_KEY}&formato=json`;
-                const response = await axios.get(url);
-                const uf = response.data.UFs?.[0];
-                console.log("Respuesta de la API:", uf);
-                if (uf) {
-                    const fecha = new Date(uf.Fecha).toISOString().split('T')[0];
-                    const valor = parseFloat(uf.Valor.replace(/\./g, '').replace(',', '.'));
-                    console.log("Fecha obtenida de la API:", fecha);
-                    console.log("Valor obtenido de la API:", valor);
-
-                    // Guardar en la base de datos
-                    await executeQuery(`
-                        INSERT INTO valor_uf (fecha, valor) VALUES (?, ?)
-                        ON DUPLICATE KEY UPDATE valor = VALUES(valor)
-                    `, [fecha, valor]);
-
-                    console.log(`[UF] UF insertada/actualizada: ${fecha} - ${valor}`);
-
-                    return res.status(200).json({
-                        success: true,
-                        message: "Valor UF del día obtenido desde la API",
-                        result: {
-                            fecha: fecha,
-                            valor: valor
-                        }
-                    });
-                } else {
-                    throw new Error('No se pudo obtener valor UF de la API');
-                }
-            } catch (apiError) {
-                console.error('Error llamando a la API de UF:', apiError);
-                return res.status(500).json({
-                    success: false,
-                    message: 'Error obteniendo valor UF desde la API',
-                    error: apiError.message
-                });
-            }
         }
+
+        const uf = ufData.UFs[0];
+        console.log('UF del día obtenida:', uf);
+
+        return res.status(200).json({
+            success: true,
+            message: "Valor UF del día encontrado",
+            result: {
+                fecha: uf.Fecha,
+                valor: uf.Valor
+            }
+        });
     } catch (err) {
-        console.error('Error haciendo fetch del valor UF del día:', err);
+        console.error('Error obteniendo UF del día:', err);
         return res.status(500).json({
             success: false,
-            message: 'Error haciendo fetch del valor UF del día',
+            message: 'Error obteniendo UF del día',
             error: err.message
         });
     }
 };
 
+
+// FUNCIONES QUE DEBERIAN ELIMINARSE 
 // CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
 const getUTM = async (req, res) => {
     try {
