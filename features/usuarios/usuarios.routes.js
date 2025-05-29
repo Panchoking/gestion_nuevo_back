@@ -13,7 +13,8 @@ import {
     getPerfil,
     updatePassword,
     getUsers,
-    getCount
+    getCount,
+    getAllNombreRutContrato
 } from './usuarios.controller.js';
 
 // middlewares
@@ -66,5 +67,7 @@ router.put('/colaborador/cambiar-estado/:id', authenticateToken, verificarAcceso
 
 router.get('/perfil', authenticateToken, getPerfil);
 router.put('/cambiar-password', authenticateToken, updatePassword);
+
+router.get('/nombres-rut-contrato', authenticateToken, getAllNombreRutContrato);
 
 export default router;

@@ -125,10 +125,8 @@ const getTramosIUSC = async (req, res) => {
     }
 };
 
-// CONSEGUIR UF DEL DIA - COMBINADO CON API
-// backend - getDailyUF
 
-// backend - getDailyUF
+//obtencion de la uf con api
 
 const getDailyUF = async (req, res) => {
     try {
