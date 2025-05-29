@@ -120,65 +120,64 @@ const getTramosIUSC = async (req, res) => {
     }
 };
 
-// CONSEGUIR UF DEL DIA - COMBINADO CON API
-// backend - getDailyUF
 
-// backend - getDailyUF
+//obtencion de la uf con api
 
-const getDailyUF = async (req, res) => {
-    try {
-        const fecha = req.query.fecha;
-        const url = `${BASE_URL}/api-sbifv3/recursos_api/uf?apikey=${API_KEY}&formato=json`;
+ const getDailyUF = async (req, res) => {
+  try {
+    const fecha = req.query.fecha; // Formato esperado: YYYY-MM-DD
+    let endpointURL;
 
-        const response = await axios.get(url);
-        const ufs = response.data.UFs || [];
+    if (fecha) {
+      // Descomponer fecha en año, mes y día
+      const [anio, mes, dia] = fecha.split("-");
 
-        // Si hay una fecha, buscar la UF correspondiente
-        if (fecha) {
-            const encontrada = ufs.find((u) => {
-                const ufFecha = new Date(u.Fecha).toISOString().split('T')[0];
-                return ufFecha === fecha;
-            });
-
-            if (!encontrada) {
-                return res.status(404).json({
-                    success: false,
-                    message: `No hay UF disponible para la fecha ${fecha}`
-                });
-            }
-
-            const valor = parseFloat(encontrada.Valor.replace(/\./g, '').replace(',', '.'));
-
-            return res.status(200).json({
-                success: true,
-                result: {
-                    fecha,
-                    valor
-                }
-            });
-        }
-
-        // Si no se especificó fecha, retornar la más reciente
-        const uf = ufs[0];
-        const valor = parseFloat(uf.Valor.replace(/\./g, '').replace(',', '.'));
-        const fechaUltima = new Date(uf.Fecha).toISOString().split('T')[0];
-
-        return res.status(200).json({
-            success: true,
-            result: {
-                fecha: fechaUltima,
-                valor
-            }
+      // Validar que todos los componentes existan
+      if (!anio || !mes || !dia) {
+        return res.status(400).json({
+          success: false,
+          message: "La fecha debe tener el formato YYYY-MM-DD",
         });
+      }
 
-    } catch (error) {
-        console.error('Error obteniendo UF:', error.message);
-        return res.status(500).json({
-            success: false,
-            message: 'Error obteniendo UF',
-            error: error.message
-        });
+      // Construir URL para una fecha específica
+      endpointURL = `${BASE_URL}/api-sbifv3/recursos_api/uf/${anio}/${mes}/dias/${dia}?apikey=${API_KEY}&formato=json`;
+    } else {
+      // URL para obtener la UF más reciente
+      endpointURL = `${BASE_URL}/api-sbifv3/recursos_api/uf?apikey=${API_KEY}&formato=json`;
     }
+
+    // Hacer la petición a la API CMF
+    const response = await axios.get(endpointURL);
+    const ufs = response.data?.UFs || [];
+
+    if (ufs.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No se encontró información de UF para la fecha proporcionada",
+      });
+    }
+
+    // Extraer y convertir valor
+    const { Fecha, Valor } = ufs[0];
+    const valorNumerico = parseFloat(Valor.replace(/\./g, '').replace(',', '.'));
+
+    return res.status(200).json({
+      success: true,
+      result: {
+        fecha: new Date(Fecha).toISOString().split("T")[0],
+        valor: valorNumerico,
+      }
+    });
+
+  } catch (error) {
+    console.error("Error al obtener UF:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Error al obtener el valor de la UF",
+      error: error.message
+    });
+  }
 };
 
 

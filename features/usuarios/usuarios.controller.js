@@ -649,6 +649,41 @@ const updateEstadoColaborador = async (req, res) => {
     }
 };
 
+
+
+const getAllNombreRutContrato = async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                dp.nombre AS dp_nombre,
+                dp.rut AS dp_rut,
+                tc.nombre AS tipo_contrato,
+                c.sueldo_liquido
+            FROM usuario u
+            JOIN datos_personales dp ON u.id = dp.id_usuario
+            LEFT JOIN contrato c ON u.id = c.id_usuario
+            LEFT JOIN tipo_contrato tc ON tc.id = c.id_tipo_contrato
+            WHERE u.is_admin = FALSE AND u.is_dummy = FALSE
+        `;
+
+        const result = await executeQuery(query);
+
+        res.status(200).json({
+            success: true,
+            message: "Datos de todos los usuarios obtenidos correctamente",
+            result
+        });
+    } catch (error) {
+        console.error('Error al obtener datos de usuarios:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Error del servidor',
+            error: error.message
+        });
+    }
+};
+
+
 export {
     getCount,
     getUsers,
@@ -661,5 +696,6 @@ export {
     deleteColaborador,
     getSupervisores,
     getPerfil,
-    updatePassword
+    updatePassword,
+    getAllNombreRutContrato
 }
