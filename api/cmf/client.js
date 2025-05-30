@@ -42,7 +42,7 @@ class CMFClient {
             const endpoint = `/api-sbifv3/recursos_api/uf/${year}/${month}/dias/${day}?apikey=${this.apiKey}&formato=json`;
             const response = await this.axios.get(endpoint);
 
-            console.log("RESPONSE:", response);
+            
 
             if (response.status === 200) {
                 return response.data;
