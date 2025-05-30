@@ -125,6 +125,23 @@ const getTramosIUSC = async (req, res) => {
     }
 };
 
+const getAFC = async (req, res) => {
+    try {
+        const afcData = await executeQuery('SELECT * FROM afc ORDER BY id');
+
+        return res.status(200).json({
+            success: true,
+            result: afcData
+        });
+    } catch (err) {
+        console.error('Error obteniendo datos de AFC:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error obteniendo datos de AFC',
+            error: err.message
+        });
+    }
+};
 
 //obtencion de la uf con api
 
@@ -157,6 +174,40 @@ const getDailyUF = async (req, res) => {
             error: err.message
         });
     }
+};
+
+const getUFByDate = async (req, res) => {
+  try {
+    const fecha = req.query.fecha; // fecha obtenida del front
+
+    const ufData = await cmfClient.getUFByDate(fecha);
+    if (!ufData || !ufData.UFs || ufData.UFs.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontró el valor de la UF para la fecha proporcionada'
+      });
+    }
+
+    const uf = ufData.UFs[0];
+    console.log('UF obtenida para la fecha:', uf);
+
+
+    return res.status(200).json({
+      success: true,
+      result: {
+        fecha: uf.Fecha,
+        valor: uf.Valor,
+      }
+    });
+ 
+  } catch (error) {
+    console.error("Error al obtener UF:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Error al obtener el valor de la UF",
+      error: error.message
+    });
+  }
 };
 
 // CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
@@ -301,9 +352,11 @@ export {
     getIndexByField,
     updateIndexByField,
     getDailyUF,
+    getUFByDate,
     getUTM,
     obtenerIPC,
     getHistorialUTM,
     getTramosIUSC,
-    getAFP
+    getAFP,
+    getAFC,
 };

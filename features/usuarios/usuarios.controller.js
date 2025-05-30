@@ -219,7 +219,7 @@ const getColaboradorPorId = async (req, res) => {
                 c.cargo AS c_cargo, 
                 c.calificacion AS c_calificacion, 
                 c.titulo AS c_titulo,
-                c.sueldo_liquido, 
+                c.sueldo_base, 
                 c.valor_plan_isapre, 
                 c.ist,
                 c.seguro_cesantia, 
@@ -568,7 +568,7 @@ const getPerfil = async (req, res) => {
               c.cargo AS c_cargo, 
               c.calificacion AS c_calificacion, 
               c.titulo AS c_titulo,
-              c.sueldo_liquido, c.valor_plan_isapre, c.ist,
+              c.sueldo_base, c.valor_plan_isapre, c.ist,
               c.seguro_cesantia, c.anticipo, c.porcentaje_anticipo,
               c.fecha_contratacion, c.termino_plazo_fijo,
               c.fonasa_tramo AS fonasatramo, c.fonasa, c.id_isapre, c.id_afp, c.id_caja_compensacion,
@@ -658,7 +658,7 @@ const getAllNombreRutContrato = async (req, res) => {
                 dp.nombre AS dp_nombre,
                 dp.rut AS dp_rut,
                 tc.nombre AS tipo_contrato,
-                c.sueldo_liquido
+                c.sueldo_base
             FROM usuario u
             JOIN datos_personales dp ON u.id = dp.id_usuario
             LEFT JOIN contrato c ON u.id = c.id_usuario

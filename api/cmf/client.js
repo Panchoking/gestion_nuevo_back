@@ -30,6 +30,40 @@ class CMFClient {
         }
     }
 
+    async getUFByDate(fecha) {
+        try {
+            // separar fecha
+            const [year, month, day] = fecha.split('-');
+
+            if (!year || !month || !day) {
+                throw new Error('Fecha inválida. Debe estar en formato YYYY-MM-DD');
+            }
+
+            const endpoint = `/api-sbifv3/recursos_api/uf/${year}/${month}/dias/${day}?apikey=${this.apiKey}&formato=json`;
+            const response = await this.axios.get(endpoint);
+
+            console.log("RESPONSE:", response);
+
+            if (response.status === 200) {
+                return response.data;
+            } else {
+                throw new Error(`Error con el fetch de UF por fecha: ${response.statusText}`);
+            }
+        } catch (err) {
+            console.log("error codigo:", err.response?.data);
+            // Devolver un objeto con la misma estructura que tendría la respuesta exitosa
+            // pero con valor 0
+            return {
+                UFs: [
+                    {
+                        Valor: "0",
+                        Fecha: fecha
+                    }
+                ]
+            };
+        }
+    }
+
     async getUTM() {
         try {
             let endpoint = `/api-sbifv3/recursos_api/utm?apikey=${this.apiKey}&formato=json`

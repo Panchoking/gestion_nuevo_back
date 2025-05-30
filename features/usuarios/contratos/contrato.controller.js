@@ -13,7 +13,7 @@ const getContratos = async (req, res) => {
         c.cargo AS c_cargo,
         c.calificacion AS c_calificacion,
         c.titulo AS c_titulo,
-        c.sueldo_liquido,
+        c.sueldo_base,
         c.valor_plan_isapre,
         c.ist,
         c.seguro_cesantia,
@@ -64,7 +64,7 @@ const getContratoByUsuario = async (req, res) => {
         c.cargo AS c_cargo,
         c.calificacion AS c_calificacion,
         c.titulo AS c_titulo,
-        c.sueldo_liquido,
+        c.sueldo_base,
         c.valor_plan_isapre,
         c.ist,
         c.seguro_cesantia,
@@ -108,7 +108,7 @@ const getContratoByUsuario = async (req, res) => {
 
 const createContrato = async (req, res) => {
     const {
-        usuario_id, mandante, cargo, calificacion, titulo, sueldo_liquido,
+        usuario_id, mandante, cargo, calificacion, titulo, sueldo_base,
         valor_plan_isapre, ist, seguro_cesantia, anticipo, porcentaje_anticipo,colacion,
         id_proyecto, horario_id, tipo_contrato_id, isapre_id, afp_id, caja_de_compensacion_id
     } = req.body;
@@ -116,7 +116,7 @@ const createContrato = async (req, res) => {
     try {
         const query = `
       INSERT INTO contrato (
-        usuario_id, mandante, cargo, calificacion, titulo, sueldo_liquido,
+        usuario_id, mandante, cargo, calificacion, titulo, sueldo_base,
         valor_plan_isapre, ist, seguro_cesantia, anticipo, porcentaje_anticipo,colacion,
         id_proyecto, horario_id, tipo_contrato_id, isapre_id, afp_id, caja_de_compensacion_id
       )
@@ -124,7 +124,7 @@ const createContrato = async (req, res) => {
     `;
     const istValue = Number(ist); 
         await executeQuery(query, [
-            usuario_id, mandante, cargo, calificacion, titulo, sueldo_liquido,
+            usuario_id, mandante, cargo, calificacion, titulo, sueldo_base,
             valor_plan_isapre, istValue, seguro_cesantia, anticipo, porcentaje_anticipo,colacion,
             id_proyecto, horario_id, tipo_contrato_id, isapre_id, afp_id, caja_de_compensacion_id
         ]);
@@ -140,7 +140,7 @@ const createContrato = async (req, res) => {
 const updateContrato = async (req, res) => {
     const { usuario_id } = req.params;
     const {
-        mandante, cargo, calificacion, titulo, sueldo_liquido,
+        mandante, cargo, calificacion, titulo, sueldo_base,
         valor_plan_isapre, ist, seguro_cesantia, anticipo, porcentaje_anticipo,colacion,
         id_proyecto, horario_id, tipo_contrato_id, isapre_id, afp_id, caja_de_compensacion_id
     } = req.body;
@@ -148,14 +148,14 @@ const updateContrato = async (req, res) => {
     try {
         const query = `
       UPDATE contrato SET 
-        mandante = ?, cargo = ?, calificacion = ?, titulo = ?, sueldo_liquido = ?,
+        mandante = ?, cargo = ?, calificacion = ?, titulo = ?, sueldo_base = ?,
         valor_plan_isapre = ?, ist = ?, seguro_cesantia = ?, anticipo = ?, porcentaje_anticipo = ?,colacion = ?,
         id_proyecto = ?, horario_id = ?, tipo_contrato_id = ?, isapre_id = ?, afp_id = ?, caja_de_compensacion_id = ?
       WHERE usuario_id = ?
     `;
     const istValue = Number(ist); 
         await executeQuery(query, [
-            mandante, cargo, calificacion, titulo, sueldo_liquido,
+            mandante, cargo, calificacion, titulo, sueldo_base,
             valor_plan_isapre, istValue, seguro_cesantia, anticipo, porcentaje_anticipo,colacion,
             id_proyecto, horario_id, tipo_contrato_id, isapre_id, afp_id, caja_de_compensacion_id,
             usuario_id

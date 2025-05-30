@@ -9,7 +9,9 @@ import {
   obtenerIPC,
   getHistorialUTM,
   getTramosIUSC,
-  getAFP
+  getAFP,
+  getUFByDate,
+  getAFC
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -24,8 +26,13 @@ router.put('/generales/:field', authenticateToken, verificarAcceso(), updateInde
 // AFP
 router.get('/afp', authenticateToken, getAFP);
 
+// SEGURO CESANTIA AFC
+router.get('/afc', authenticateToken, getAFC);
+
 // UF Y UTM
 router.get('/uf', getDailyUF);
+router.get('/uf/date', authenticateToken, getUFByDate);
+
 router.get('/utm', authenticateToken, getUTM);
 router.get('/utm/historial', authenticateToken, getHistorialUTM); // Nueva ruta para historial
 

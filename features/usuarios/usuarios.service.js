@@ -105,7 +105,7 @@ const createColaborador = async (colaboradorData) => {
             id_banco, cuenta, numero_cuenta,
             //datos contrato
             codigo_contrato, mandante, cargo, calificacion, titulo,
-            sueldo_liquido, valor_plan_isapre, ist,
+            sueldo_base, valor_plan_isapre, ist,
             seguro_cesantia, anticipo, porcentaje_anticipo,
             fecha_contratacion, termino_plazo_fijo, fonasa, fonasatramo,
             id_centro_costo, id_horario, id_tipo_contrato,
@@ -192,7 +192,7 @@ const createColaborador = async (colaboradorData) => {
         await executeQuery(
             `INSERT INTO contrato (
                 id_usuario, codigo, mandante, cargo, calificacion, titulo,
-                sueldo_liquido, valor_plan_isapre, ist, seguro_cesantia,
+                sueldo_base, valor_plan_isapre, ist, seguro_cesantia,
                 anticipo, porcentaje_anticipo, fecha_contratacion, termino_plazo_fijo,fonasa,fonasa_tramo,
                 id_centro_costo, id_horario, id_tipo_contrato, id_isapre,
                 id_afp, id_caja_compensacion
@@ -200,7 +200,7 @@ const createColaborador = async (colaboradorData) => {
 
             [
                 userId, codigo_contrato, mandante, cargo, calificacion, titulo,
-                sueldo_liquido, valor_plan_isapre, ist, seguro_cesantia || 1,
+                sueldo_base, valor_plan_isapre, ist, seguro_cesantia || 1,
                 anticipo || 0, porcentaje_anticipo || 0, fecha_contratacion, termino_plazo_fijo, fonasa, fonasatramo,
                 id_centro_costo, id_horario, id_tipo_contrato, id_isapre,
                 id_afp, id_caja_compensacion
@@ -303,7 +303,7 @@ const editarColaborador = async (colaboradorData) => {
 
             // Contrato
             codigo_contrato, mandante, cargo, calificacion, titulo,
-            sueldo_liquido, valor_plan_isapre, ist,
+            sueldo_base, valor_plan_isapre, ist,
             seguro_cesantia, anticipo, porcentaje_anticipo,
             fecha_contratacion, termino_plazo_fijo, fonasa, fonasatramo,
             id_centro_costo, id_horario, id_tipo_contrato,
@@ -427,13 +427,13 @@ const editarColaborador = async (colaboradorData) => {
         await executeQuery(`
             UPDATE contrato SET
                 codigo = ?, mandante = ?, cargo = ?, calificacion = ?, titulo = ?,
-                sueldo_liquido = ?, valor_plan_isapre = ?, ist = ?, seguro_cesantia = ?,
+                sueldo_base = ?, valor_plan_isapre = ?, ist = ?, seguro_cesantia = ?,
                 anticipo = ?, porcentaje_anticipo = ?, fecha_contratacion = ?, termino_plazo_fijo = ?, fonasa = ?, fonasa_tramo = ?,
                 id_centro_costo = ?, id_horario = ?, id_tipo_contrato = ?, id_isapre = ?, id_afp = ?, id_caja_compensacion = ?
             WHERE id_usuario = ?
         `, [
             codigo_contrato, mandante, cargo, calificacion, titulo,
-            sueldo_liquido, valor_plan_isapre, ist, seguro_cesantia || 1,
+            sueldo_base, valor_plan_isapre, ist, seguro_cesantia || 1,
             anticipo || 0, porcentaje_anticipo || 0, fecha_contratacion, terminoFinal,
             fonasa, fonasatramo,
             idCentroCostoFinal, idHorarioFinal, idTipoContratoFinal,
