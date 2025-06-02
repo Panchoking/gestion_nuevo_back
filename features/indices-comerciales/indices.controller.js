@@ -177,37 +177,37 @@ const getDailyUF = async (req, res) => {
 };
 
 const getUFByDate = async (req, res) => {
-  try {
-    const fecha = req.query.fecha; // fecha obtenida del front
+    try {
+        const fecha = req.query.fecha; // fecha obtenida del front
 
-    const ufData = await cmfClient.getUFByDate(fecha);
-    if (!ufData || !ufData.UFs || ufData.UFs.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No se encontró el valor de la UF para la fecha proporcionada'
-      });
+        const ufData = await cmfClient.getUFByDate(fecha);
+        if (!ufData || !ufData.UFs || ufData.UFs.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontró el valor de la UF para la fecha proporcionada'
+            });
+        }
+
+        const uf = ufData.UFs[0];
+        console.log('UF obtenida para la fecha:', uf);
+
+
+        return res.status(200).json({
+            success: true,
+            result: {
+                fecha: uf.Fecha,
+                valor: uf.Valor,
+            }
+        });
+
+    } catch (error) {
+        console.error("Error al obtener UF:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error al obtener el valor de la UF",
+            error: error.message
+        });
     }
-
-    const uf = ufData.UFs[0];
-    console.log('UF obtenida para la fecha:', uf);
-
-
-    return res.status(200).json({
-      success: true,
-      result: {
-        fecha: uf.Fecha,
-        valor: uf.Valor,
-      }
-    });
- 
-  } catch (error) {
-    console.error("Error al obtener UF:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Error al obtener el valor de la UF",
-      error: error.message
-    });
-  }
 };
 
 // CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
@@ -347,6 +347,34 @@ const getAFP = async (req, res) => {
 };
 
 
+
+function calcularSueldoTotal(SB, HE, IMM, horasSemanales) {
+    // Constantes
+    const semanasTrabajadas = 4; // fijo a 4, puedes ajustar si es necesario
+    const diasTrabajados = 28; // asumido constante para factor de proporcionalidad
+
+    // Gratificación legal (25% con tope)
+    const gratificacionBruta = SB * 0.25;
+    const topeMensualGrat = (IMM * 4.75) / 12;
+    const gratificacion = Math.min(gratificacionBruta, topeMensualGrat);
+
+    // Cálculo del factor horas extras con horas semanales como variable
+    const horasMensuales = horasSemanales * semanasTrabajadas;
+    const factorHorasExtras = (diasTrabajados / 30) * horasMensuales * (1.5 / 180);
+    const valorHoraExtra = SB * factorHorasExtras;
+    const pagoHorasExtras = HE * valorHoraExtra;
+
+    // Sueldo total
+    const sueldoTotal = SB + gratificacion + pagoHorasExtras;
+
+    return {
+        sueldoBase: SB,
+        gratificacion,
+        pagoHorasExtras,
+        sueldoTotal: Math.round(sueldoTotal)
+    };
+}
+
 export {
     getAllIndices,
     getIndexByField,
@@ -359,4 +387,5 @@ export {
     getTramosIUSC,
     getAFP,
     getAFC,
+    calcularSueldoTotal
 };

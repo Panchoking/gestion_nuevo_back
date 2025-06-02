@@ -11,7 +11,8 @@ import {
   getTramosIUSC,
   getAFP,
   getUFByDate,
-  getAFC
+  getAFC,
+  calcularSueldoTotal
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -41,5 +42,39 @@ router.get('/iusc', authenticateToken, getTramosIUSC);
 
 // IPC
 router.get('/ipc/anual', authenticateToken, obtenerIPC);
+
+
+//calculo sueldo
+
+router.post('/calcular-sueldo', authenticateToken, (req, res) => {
+    const { sueldoBase, horasExtras, imm, horasSemanales } = req.body;
+
+    if (
+        isNaN(sueldoBase) ||
+        isNaN(horasExtras) ||
+        isNaN(imm) ||
+        isNaN(horasSemanales)
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: "Todos los parámetros deben ser números válidos",
+        });
+    }
+
+    try {
+        const resultado = calcularSueldoTotal(sueldoBase, horasExtras, imm, horasSemanales);
+        return res.status(200).json({
+            success: true,
+            result: resultado
+        });
+    } catch (error) {
+        console.error("Error al calcular sueldo total:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error al calcular sueldo total",
+            error: error.message
+        });
+    }
+});
 
 export default router;
