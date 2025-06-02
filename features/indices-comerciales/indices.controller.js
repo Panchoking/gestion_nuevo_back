@@ -211,6 +211,37 @@ const getUFByDate = async (req, res) => {
 };
 
 // CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
+const getUTM = async (req, res) => {
+    try {
+        const utmData = await cmfClient.getCurrentUTM();
+        if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontró el valor de la UTM del mes'
+            });
+        }
+
+        const utm = utmData.UTMs[0];
+        console.log('UTM del mes obtenida:', utm);
+
+        return res.status(200).json({
+            success: true,
+            message: "Valor UTM del mes encontrado",
+            result: {
+                fecha: utm.Fecha,
+                valor: utm.Valor
+            }
+        });
+    } catch (err) {
+        console.error('Error obteniendo UTM del mes:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error obteniendo UTM del mes',
+            error: err.message
+        });
+    }
+};
+
 const getUTMbyDate = async (req, res) => {
     try {
         const fecha = req.query.fecha; // fecha obtenida del front
@@ -366,6 +397,7 @@ const calcularLiquidacion = async (req, res) => {
         // obtener las horas legales
         const [{ valor: horasLegales }] = await executeQuery('SELECT valor FROM indices_comerciales WHERE nombre = "horas_legales" LIMIT 1;');
         const [{ valor: sueldoMinimo }] = await executeQuery('SELECT valor FROM indices_comerciales WHERE nombre = "rmi_general" LIMIT 1;');
+        const [{ valor: planSalud }] = await executeQuery('SELECT valor FROM indices_comerciales WHERE nombre = "plan_salud" LIMIT 1;');
         console.log('Horas legales:', horasLegales);
 
         // obtener gratificación
@@ -388,8 +420,15 @@ const calcularLiquidacion = async (req, res) => {
         console.log('Horas Extras Calculadas:', horasExtrasCalculadas);
 
         // calcular sueldo bruto
-        const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
+        let sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
         console.log('Sueldo Bruto:', sueldoBruto);
+
+        // descuento afp
+        const descuentoAFP = (afpData.tasa / 100) * sueldoBruto;
+        console.log('Descuento AFP:', descuentoAFP);
+        
+        sueldoBruto -= descuentoAFP; // restar descuento AFP al sueldo bruto
+        console.log('Sueldo Bruto después de AFP:', sueldoBruto);
 
 
         // retornar respuesta para testing
@@ -421,6 +460,7 @@ export {
     getDailyUF,
     getUFByDate,
     getUTMbyDate,
+    getUTM,
     obtenerIPC,
     getHistorialUTM,
     getTramosIUSC,

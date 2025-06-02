@@ -6,6 +6,7 @@ import {
   updateIndexByField,
   getDailyUF,
   getUTMbyDate,
+  getUTM,
   obtenerIPC,
   getHistorialUTM,
   getTramosIUSC,
@@ -33,6 +34,8 @@ router.get('/afc', authenticateToken, getAFC);
 // UF Y UTM
 router.get('/uf', getDailyUF);
 router.get('/uf/date', authenticateToken, getUFByDate);
+
+router.get('/utm', authenticateToken, getUTM); 
 router.get('/utm/date', authenticateToken, getUTMbyDate);
 
 router.get('/utm/historial', authenticateToken, getHistorialUTM); // Nueva ruta para historial
