@@ -350,8 +350,11 @@ const getAFP = async (req, res) => {
 
 const calcularLiquidacion = async (req, res) => {
     try {
-        const { sueldoBase, horasExtras, diasTrabajados } = req.body;
+        const { sueldoBase, horasExtras, diasTrabajados, afp } = req.body;
         // por ahora solo usaremos sueldoBase
+        console.log("afp:", afp);
+        const [afpData] = await executeQuery('SELECT * FROM afp WHERE id = ?', [afp]); // extraer tasa de aca
+        console.log("afpData:", afpData);
 
         if (!sueldoBase || isNaN(sueldoBase)) { // validar sueldo base
             return res.status(400).json({
