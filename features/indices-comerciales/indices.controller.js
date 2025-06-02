@@ -378,70 +378,84 @@ const getAFP = async (req, res) => {
         });
     }
 };
-
+// Controlador para calcular la liquidación con AFP, salud y cesantía (trabajador)
 const calcularLiquidacion = async (req, res) => {
     try {
         const { sueldoBase, horasExtras, diasTrabajados, afp } = req.body;
-        // por ahora solo usaremos sueldoBase
-        console.log("afp:", afp);
-        const [afpData] = await executeQuery('SELECT * FROM afp WHERE id = ?', [afp]); // extraer tasa de aca
-        console.log("afpData:", afpData);
 
-        if (!sueldoBase || isNaN(sueldoBase)) { // validar sueldo base
-            return res.status(400).json({
-                success: false,
-                message: 'Sueldo base inválido'
-            });
+        console.log("afp ID:", afp);
+
+        if (!sueldoBase || isNaN(sueldoBase)) {
+            return res.status(400).json({ success: false, message: 'Sueldo base inválido' });
         }
 
-        // obtener las horas legales
-        const [{ valor: horasLegales }] = await executeQuery('SELECT valor FROM indices_comerciales WHERE nombre = "horas_legales" LIMIT 1;');
-        const [{ valor: sueldoMinimo }] = await executeQuery('SELECT valor FROM indices_comerciales WHERE nombre = "rmi_general" LIMIT 1;');
-        const [{ valor: planSalud }] = await executeQuery('SELECT valor FROM indices_comerciales WHERE nombre = "plan_salud" LIMIT 1;');
-        console.log('Horas legales:', horasLegales);
+        // Obtener datos de AFP seleccionada
+        const [afpData] = await executeQuery('SELECT * FROM afp WHERE id = ?', [afp]);
+        if (!afpData) {
+            return res.status(400).json({ success: false, message: 'AFP no encontrada' });
+        }
+        const tasaAFP = parseFloat(afpData.tasa);
+        console.log("Tasa AFP seleccionada:", tasaAFP);
 
-        // obtener gratificación
-        let gratificacion = sueldoBase * 0.25; // 25% del sueldo base
-        // calcular tope gratificacion
+        // Obtener índices base
+        const indices = await executeQuery(`
+            SELECT nombre, valor FROM indices_comerciales
+            WHERE nombre IN ("horas_legales", "rmi_general", "plan_salud");
+        `);
+        const getIndice = (nombre) => parseFloat(indices.find(i => i.nombre === nombre)?.valor || 0);
+
+        const horasLegales = getIndice("horas_legales");
+        const sueldoMinimo = getIndice("rmi_general");
+        const planSalud = getIndice("plan_salud"); // 7%
+
+        // Gratificación legal
+        let gratificacion = sueldoBase * 0.25;
         const topeGratificacion = (sueldoMinimo * 4.75) / 12;
-
-        if (gratificacion > topeGratificacion) { // si la gratificación excede el tope, ajustarla
-            console.log('Gratificación excede el tope, ajustando a:', topeGratificacion);
+        if (gratificacion > topeGratificacion) {
             gratificacion = topeGratificacion;
         }
 
-        // calcular FHE (factor horas extras)
-        const factorBase = (28 / 30) / (horasLegales * 4); // 28 días al mes, 30 días al mes, horas legales por 4 semanas
-        const fhe = factorBase * 1.5; // factor horas extras, 1.5 = factor constante
-        console.log('Factor Horas Extras (FHE):', fhe);
+        // FHE
+        const factorBase = (28 / 30) / (horasLegales * 4);
+        const fhe = factorBase * 1.5;
+        const horasExtrasCalculadas = sueldoBase * fhe * horasExtras;
 
-        // calcular horas extras
-        const horasExtrasCalculadas = (sueldoBase * fhe) * horasExtras;
-        console.log('Horas Extras Calculadas:', horasExtrasCalculadas);
+        // Sueldo bruto
+        const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
 
-        // calcular sueldo bruto
-        let sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
-        console.log('Sueldo Bruto:', sueldoBruto);
+        // Obtener tasa cesantía desde tabla afc (id = 1 = Plazo Indefinido)
+        const [afcData] = await executeQuery('SELECT fi_trabajador FROM afc WHERE id = 1');
+        const tasaCesantia = parseFloat(afcData?.fi_trabajador) || 0;
 
-        // descuento afp
-        const descuentoAFP = (afpData.tasa / 100) * sueldoBruto;
-        console.log('Descuento AFP:', descuentoAFP);
-        
-        sueldoBruto -= descuentoAFP; // restar descuento AFP al sueldo bruto
-        console.log('Sueldo Bruto después de AFP:', sueldoBruto);
+        // Descuentos (todos sobre sueldo bruto)
+        const descuentoAFP = sueldoBruto * (tasaAFP / 100);
+        const descuentoSalud = sueldoBruto * (planSalud / 100);
+        const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
 
+        console.log("Descuento AFP:", descuentoAFP);
+        console.log("Descuento Salud:", descuentoSalud);
+        console.log("Descuento Cesantía:", descuentoCesantia);
 
-        // retornar respuesta para testing
+        // Sueldo líquido
+        const sueldoLiquido = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia;
+        console.log("Sueldo Líquido:", sueldoLiquido);
+
+        // Respuesta
         return res.status(200).json({
             success: true,
             message: 'OK',
             result: {
-                sueldoBruto: sueldoBruto,
-                fhe: fhe,
-                gratificacion: gratificacion,
-                horasExtrasCalculadas: horasExtrasCalculadas,
+                sueldoBruto,
+                fhe,
+                gratificacion,
+                horasExtrasCalculadas,
+                descuentoAFP,
+                descuentoSalud,
+                descuentoCesantia,
+                sueldoLiquido
             }
         });
+
     } catch (err) {
         console.error('Error calculando liquidación:', err);
         return res.status(500).json({
@@ -450,7 +464,8 @@ const calcularLiquidacion = async (req, res) => {
             error: err.message
         });
     }
-}
+};
+
 
 
 export {
