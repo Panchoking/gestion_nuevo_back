@@ -5,13 +5,14 @@ import {
   getIndexByField, 
   updateIndexByField,
   getDailyUF,
-  getUTM,
+  getUTMbyDate,
   obtenerIPC,
   getHistorialUTM,
   getTramosIUSC,
   getAFP,
   getUFByDate,
-  getAFC
+  getAFC,
+  calcularLiquidacion
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -32,8 +33,8 @@ router.get('/afc', authenticateToken, getAFC);
 // UF Y UTM
 router.get('/uf', getDailyUF);
 router.get('/uf/date', authenticateToken, getUFByDate);
+router.get('/utm/date', authenticateToken, getUTMbyDate);
 
-router.get('/utm', authenticateToken, getUTM);
 router.get('/utm/historial', authenticateToken, getHistorialUTM); // Nueva ruta para historial
 
 //iusc
@@ -41,5 +42,8 @@ router.get('/iusc', authenticateToken, getTramosIUSC);
 
 // IPC
 router.get('/ipc/anual', authenticateToken, obtenerIPC);
+
+// CALCULOS
+router.post('/calculos/liquidacion', calcularLiquidacion);
 
 export default router;

@@ -42,8 +42,6 @@ class CMFClient {
             const endpoint = `/api-sbifv3/recursos_api/uf/${year}/${month}/dias/${day}?apikey=${this.apiKey}&formato=json`;
             const response = await this.axios.get(endpoint);
 
-            console.log("RESPONSE:", response);
-
             if (response.status === 200) {
                 return response.data;
             } else {
@@ -64,7 +62,27 @@ class CMFClient {
         }
     }
 
-    async getUTM() {
+    async getUTMbyDate(fecha) {
+        try {
+            const [year, month, day] = fecha.split('-');
+            if (!year || !month) {
+                throw new Error('Fecha inválida. Debe estar en formato YYYY-MM');
+            }
+
+            const endpoint = `/api-sbifv3/recursos_api/utm/${year}/${month}?apikey=${this.apiKey}&formato=json`;
+            const response = await this.axios.get(endpoint);
+            if (response.status === 200) {
+                return response.data;
+            } else {
+                throw new Error(`Error con el fetch de UTM por fecha: ${response.statusText}`);
+            }
+        } catch (err) {
+            console.error('Error al obtener la UTM:', err.message);
+            throw new Error('Error al obtener la UTM: ' + err.message);
+        }
+    }
+
+    async getCurrentUTM() {
         try {
             let endpoint = `/api-sbifv3/recursos_api/utm?apikey=${this.apiKey}&formato=json`
             const response = await this.axios.get(endpoint);

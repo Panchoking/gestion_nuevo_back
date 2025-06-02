@@ -177,43 +177,45 @@ const getDailyUF = async (req, res) => {
 };
 
 const getUFByDate = async (req, res) => {
-  try {
-    const fecha = req.query.fecha; // fecha obtenida del front
+    try {
+        const fecha = req.query.fecha; // fecha obtenida del front
 
-    const ufData = await cmfClient.getUFByDate(fecha);
-    if (!ufData || !ufData.UFs || ufData.UFs.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No se encontró el valor de la UF para la fecha proporcionada'
-      });
+        const ufData = await cmfClient.getUFByDate(fecha);
+        if (!ufData || !ufData.UFs || ufData.UFs.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontró el valor de la UF para la fecha proporcionada'
+            });
+        }
+
+        const uf = ufData.UFs[0];
+        console.log('UF obtenida para la fecha:', uf);
+
+
+        return res.status(200).json({
+            success: true,
+            result: {
+                fecha: uf.Fecha,
+                valor: uf.Valor,
+            }
+        });
+
+    } catch (error) {
+        console.error("Error al obtener UF:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error al obtener el valor de la UF",
+            error: error.message
+        });
     }
-
-    const uf = ufData.UFs[0];
-    console.log('UF obtenida para la fecha:', uf);
-
-
-    return res.status(200).json({
-      success: true,
-      result: {
-        fecha: uf.Fecha,
-        valor: uf.Valor,
-      }
-    });
- 
-  } catch (error) {
-    console.error("Error al obtener UF:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Error al obtener el valor de la UF",
-      error: error.message
-    });
-  }
 };
 
 // CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
-const getUTM = async (req, res) => {
+const getUTMbyDate = async (req, res) => {
     try {
-        const utmData = await cmfClient.getUTM();
+        const fecha = req.query.fecha; // fecha obtenida del front
+
+        const utmData = await cmfClient.getUTMbyDate(fecha);
         if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
             return res.status(404).json({
                 success: false,
@@ -346,6 +348,68 @@ const getAFP = async (req, res) => {
     }
 };
 
+const calcularLiquidacion = async (req, res) => {
+    try {
+        const { sueldoBase, horasExtras, diasTrabajados } = req.body;
+        // por ahora solo usaremos sueldoBase
+
+        if (!sueldoBase || isNaN(sueldoBase)) { // validar sueldo base
+            return res.status(400).json({
+                success: false,
+                message: 'Sueldo base inválido'
+            });
+        }
+
+        // obtener las horas legales
+        const [{ valor: horasLegales }] = await executeQuery('SELECT valor FROM indices_comerciales WHERE nombre = "horas_legales" LIMIT 1;');
+        const [{ valor: sueldoMinimo }] = await executeQuery('SELECT valor FROM indices_comerciales WHERE nombre = "rmi_general" LIMIT 1;');
+        console.log('Horas legales:', horasLegales);
+
+        // obtener gratificación
+        let gratificacion = sueldoBase * 0.25; // 25% del sueldo base
+        // calcular tope gratificacion
+        const topeGratificacion = (sueldoMinimo * 4.75) / 12;
+
+        if (gratificacion > topeGratificacion) { // si la gratificación excede el tope, ajustarla
+            console.log('Gratificación excede el tope, ajustando a:', topeGratificacion);
+            gratificacion = topeGratificacion;
+        }
+
+        // calcular FHE (factor horas extras)
+        const factorBase = (28 / 30) / (horasLegales * 4); // 28 días al mes, 30 días al mes, horas legales por 4 semanas
+        const fhe = factorBase * 1.5; // factor horas extras, 1.5 = factor constante
+        console.log('Factor Horas Extras (FHE):', fhe);
+
+        // calcular horas extras
+        const horasExtrasCalculadas = (sueldoBase * fhe) * horasExtras;
+        console.log('Horas Extras Calculadas:', horasExtrasCalculadas);
+
+        // calcular sueldo bruto
+        const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
+        console.log('Sueldo Bruto:', sueldoBruto);
+
+
+        // retornar respuesta para testing
+        return res.status(200).json({
+            success: true,
+            message: 'OK',
+            result: {
+                sueldoBruto: sueldoBruto,
+                fhe: fhe,
+                gratificacion: gratificacion,
+                horasExtrasCalculadas: horasExtrasCalculadas,
+            }
+        });
+    } catch (err) {
+        console.error('Error calculando liquidación:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error calculando liquidación',
+            error: err.message
+        });
+    }
+}
+
 
 export {
     getAllIndices,
@@ -353,10 +417,11 @@ export {
     updateIndexByField,
     getDailyUF,
     getUFByDate,
-    getUTM,
+    getUTMbyDate,
     obtenerIPC,
     getHistorialUTM,
     getTramosIUSC,
     getAFP,
     getAFC,
+    calcularLiquidacion
 };
