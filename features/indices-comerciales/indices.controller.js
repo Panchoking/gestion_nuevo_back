@@ -358,7 +358,7 @@ const obtenerIPC = async (req, res) => {
 
 const getAFP = async (req, res) => {
     try {
-        const response = await executeQuery('SELECT * FROM AFP ORDER BY id');
+        const response = await executeQuery('SELECT * FROM afp ORDER BY id');
         if (response.length === 0) {
             return res.status(404).json({
                 success: false,
