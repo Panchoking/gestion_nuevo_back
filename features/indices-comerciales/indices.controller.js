@@ -436,6 +436,9 @@ const calcularLiquidacion = async (req, res) => {
         const descuentoSalud = sueldoBruto * (planSalud / 100);
         const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
 
+        const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
+        let totalDescuentos = leyesSociales;
+
         console.log("Descuento AFP:", descuentoAFP);
         console.log("Descuento Salud:", descuentoSalud);
         console.log("Descuento Cesantía:", descuentoCesantia);
@@ -454,10 +457,13 @@ const calcularLiquidacion = async (req, res) => {
         const valorUTM = parseFloat(utmData.UTMs[0].Valor.replace(/\./g, '').replace(',', '.'));
         console.log("Valor UTM del mes:", valorUTM);
 
+        // base tributable (sueldo bruto menos descuentos)
+        const baseTributable = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia;
+        console.log("base tributable:", baseTributable);
 
-        // Convertir sueldo bruto a UTM
-        const sueldoBrutoUTM = sueldoBruto / valorUTM;
-        console.log("Sueldo bruto en UTM:", sueldoBrutoUTM);
+        // Convertir sueldo Tributable a UTM
+        const baseTributableUTM = baseTributable / valorUTM;
+        console.log("base tributable en UTM:", baseTributableUTM);
 
         // Buscar el tramo correspondiente
         let tramoIUSC = null;
@@ -465,7 +471,7 @@ const calcularLiquidacion = async (req, res) => {
             const desdeUTM = parseFloat(tramo.desde_utm);
             const hastaUTM = tramo.hasta_utm ? parseFloat(tramo.hasta_utm) : Infinity;
 
-            if (sueldoBrutoUTM > desdeUTM && sueldoBrutoUTM <= hastaUTM) {
+            if (baseTributableUTM > desdeUTM && baseTributableUTM <= hastaUTM) {
                 tramoIUSC = tramo;
                 break;
             }
@@ -478,11 +484,17 @@ const calcularLiquidacion = async (req, res) => {
             console.log("tasa : ",tasa);
             const rebajar = parseFloat(tramoIUSC.rebajar_utm);
              console.log("rebajar",rebajar);
-            impuestoIUSC = (sueldoBrutoUTM * (tasa / 100) - rebajar) * valorUTM;// calculo descuento * tramo
+            impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;// calculo descuento * tramo
             impuestoIUSC = Math.max(0, impuestoIUSC); // Asegurar que no sea negativo
         }
         console.log("Impuesto IUSC:", impuestoIUSC);
 
+        totalDescuentos += impuestoIUSC; // Sumar impuesto IUSC a los descuentos totales
+
+        console.log("Total Descuentos:", totalDescuentos);
+        console.log("Leyes Sociales:", leyesSociales);
+
+        
         // Sueldo líquido
         const sueldoLiquido = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC;
         console.log("Sueldo Líquido:", sueldoLiquido);
@@ -501,7 +513,10 @@ const calcularLiquidacion = async (req, res) => {
                 descuentoCesantia,
                 impuestoIUSC,
                 tramoImpuesto: tramoIUSC ? tramoIUSC.tramo : 0,
-                sueldoLiquido
+                sueldoLiquido,
+                baseTributable,
+                leyesSociales,
+                totalDescuentos,
             }
         });
 
