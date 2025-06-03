@@ -6,7 +6,7 @@ import { Server } from 'socket.io';
 import socketManager from './services/socketManager.js';
 
 //const PORT = process.env.PORT || 3001;
-const PORT = 5001;
+const PORT = 5002;
 const server = http.createServer(app);
 
 // crear instancia de IO

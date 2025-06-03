@@ -48,7 +48,7 @@ const allowedOrigins = [ // TODO: no deberia ser necesario darle permisos a CHEC
     'http://localhost:5175', // desarrollo frontend 2
     'http://192.168.5.228:5173', // desarrollo front end network
     'https://check.altimec.cl', // VPS
-    'https://gestion.altimec.cl', // VPS
+    'https://gestion.altimec.cl', // VPS'
 ];
 
 app.use(cors({
