@@ -12,5 +12,3 @@ const server = http.createServer(app);
 server.listen(PORT, () => {
   console.log(`ALTI.GESTION iniciado en el puerto ${PORT}`);
 });
-
-export { io };
