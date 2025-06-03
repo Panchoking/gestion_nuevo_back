@@ -475,8 +475,10 @@ const calcularLiquidacion = async (req, res) => {
         let impuestoIUSC = 0;
         if (tramoIUSC && tramoIUSC.tasa !== null) {
             const tasa = parseFloat(tramoIUSC.tasa);
+            console.log("tasa : ",tasa);
             const rebajar = parseFloat(tramoIUSC.rebajar_utm);
-            impuestoIUSC = (sueldoBrutoUTM * (tasa / 100) - rebajar) * valorUTM;
+             console.log("rebajar",rebajar);
+            impuestoIUSC = (sueldoBrutoUTM * (tasa / 100) - rebajar) * valorUTM;// calculo descuento * tramo
             impuestoIUSC = Math.max(0, impuestoIUSC); // Asegurar que no sea negativo
         }
         console.log("Impuesto IUSC:", impuestoIUSC);
