@@ -13,7 +13,8 @@ import {
   getAFP,
   getUFByDate,
   getAFC,
-  calcularLiquidacion
+  calcularLiquidacion,
+  calcularSueldoBaseDesdeNeto
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -48,5 +49,6 @@ router.get('/ipc/anual', authenticateToken, obtenerIPC);
 
 // CALCULOS
 router.post('/calculos/liquidacion', calcularLiquidacion);
+router.post('/calculos/sueldo-base', calcularSueldoBaseDesdeNeto);
 
 export default router;
