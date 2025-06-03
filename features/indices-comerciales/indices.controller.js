@@ -421,6 +421,9 @@ const calcularLiquidacion = async (req, res) => {
         const horasExtrasCalculadas = sueldoBase * fhe * horasExtras;
 
         // Sueldo bruto
+
+        // agregar aguinaldo por UF de la fecha seleccionada
+
         const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
         console.log("Sueldo Bruto:", sueldoBruto);
 
