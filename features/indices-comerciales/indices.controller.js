@@ -491,7 +491,7 @@ const calcularSueldoBaseDesdeNeto = async (req, res) => {
             // Si la diferencia es menor que la tolerancia, hemos encontrado la solución
             if (Math.abs(diferencia) <= tolerancia) {
                 console.log("Convergencia alcanzada en iteración:", iteracion + 1);
-                
+
                 return res.status(200).json({
                     success: true,
                     message: 'Cálculo inverso completado',
@@ -650,9 +650,9 @@ const calcularLiquidacion = async (req, res) => {
         let impuestoIUSC = 0;
         if (tramoIUSC && tramoIUSC.tasa !== null) {
             const tasa = parseFloat(tramoIUSC.tasa);
-            console.log("tasa : ",tasa);
+            console.log("tasa : ", tasa);
             const rebajar = parseFloat(tramoIUSC.rebajar_utm);
-             console.log("rebajar",rebajar);
+            console.log("rebajar", rebajar);
             impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;// calculo descuento * tramo
             impuestoIUSC = Math.max(0, impuestoIUSC); // Asegurar que no sea negativo
         }
@@ -663,7 +663,7 @@ const calcularLiquidacion = async (req, res) => {
         console.log("Total Descuentos:", totalDescuentos);
         console.log("Leyes Sociales:", leyesSociales);
 
-        
+
         // Sueldo líquido
         const sueldoLiquido = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC;
         console.log("Sueldo Líquido:", sueldoLiquido);
@@ -700,6 +700,202 @@ const calcularLiquidacion = async (req, res) => {
 };
 
 
+const calcularLiquidacionesMultiples = async (req, res) => {
+    try {
+        console.log("=== INICIO calcularLiquidacionesMultiples ===");
+        const { trabajadores } = req.body;
+
+        if (!Array.isArray(trabajadores) || trabajadores.length === 0) {
+            return res.status(400).json({ success: false, message: 'Debe proporcionar una lista de trabajadores válida' });
+        }
+
+        const afps = await executeQuery('SELECT * FROM afp');
+        const afc = await executeQuery('SELECT fi_trabajador FROM afc WHERE id = 1');
+        const indices = await executeQuery(`
+            SELECT nombre, valor FROM indices_comerciales
+            WHERE nombre IN ("horas_legales", "rmi_general", "plan_salud");
+        `);
+        const tablaIUSC = await executeQuery(`SELECT * FROM valores_iusc`);
+        const utmData = await cmfClient.getCurrentUTM();
+
+        if (!utmData?.UTMs?.length) {
+            return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM' });
+        }
+
+        // ✅ Convertir todos los valores a números
+        const getIndice = (nombre) => {
+            const indice = indices.find(i => i.nombre === nombre);
+            const valor = parseFloat(indice?.valor || 0);
+            console.log(`Índice ${nombre}:`, valor);
+            return valor;
+        };
+
+        const horasLegales = getIndice("horas_legales");
+        const sueldoMinimo = getIndice("rmi_general");
+        const planSalud = getIndice("plan_salud");
+        const tasaCesantia = parseFloat(afc[0]?.fi_trabajador || 0);
+        const valorUTM = parseFloat(utmData.UTMs[0].Valor.replace(/\./g, '').replace(',', '.'));
+
+        console.log("Valores calculados:", {
+            horasLegales,
+            sueldoMinimo,
+            planSalud,
+            tasaCesantia,
+            valorUTM
+        });
+
+        const resultados = [];
+        const errores = [];
+
+        for (const [index, trabajador] of trabajadores.entries()) {
+            console.log(`\n--- Trabajador ${index + 1}/${trabajadores.length} ---`);
+
+            const { sueldoBase: sueldoBaseRaw, horasExtras = 0, diasTrabajados = 28, afp: afpId, rut, nombre } = trabajador;
+
+            // ✅ CONVERSIÓN CORRECTA: Asegurar que todo sea número
+            const sueldoBase = parseFloat(sueldoBaseRaw || 0);
+            const horasExtrasNum = parseFloat(horasExtras || 0);
+            const diasTrabajadosNum = parseInt(diasTrabajados || 28);
+
+            console.log(`Valores convertidos para ${rut}:`, {
+                sueldoBaseOriginal: sueldoBaseRaw,
+                sueldoBaseNumerico: sueldoBase,
+                horasExtrasNum,
+                diasTrabajadosNum
+            });
+
+            if (!sueldoBase || isNaN(sueldoBase) || sueldoBase <= 0) {
+                console.log(`❌ Sueldo base inválido para ${rut}:`, sueldoBase);
+                errores.push({ rut, error: "Sueldo base inválido" });
+                continue;
+            }
+
+            const afp = afps.find(a => a.id == afpId);
+            if (!afp) {
+                console.log(`❌ AFP no encontrada para ${rut}. ID buscado: ${afpId}`);
+                errores.push({ rut, error: `AFP no válida o no encontrada (ID: ${afpId})` });
+                continue;
+            }
+
+            // ✅ Convertir tasa AFP a número
+            const tasaAFP = parseFloat(afp.tasa || 0);
+
+            // ✅ Cálculo de gratificación
+            let gratificacion = sueldoBase * 0.25;
+            const topeGratificacion = (sueldoMinimo * 4.75) / 12;
+            if (gratificacion > topeGratificacion) {
+                gratificacion = topeGratificacion;
+            }
+
+            // ✅ Cálculo de horas extras
+            const factorBase = (28 / 30) / (horasLegales * 4);
+            const fhe = factorBase * 1.5;
+            const horasExtrasCalculadas = sueldoBase * fhe * horasExtrasNum;
+
+            // ✅ Sueldo bruto (SUMA, no concatenación)
+            const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
+
+            console.log(`Cálculos para ${rut}:`, {
+                sueldoBase,
+                gratificacion,
+                horasExtrasCalculadas,
+                sueldoBruto
+            });
+
+            // ✅ Descuentos
+            const descuentoAFP = sueldoBruto * (tasaAFP / 100);
+            const descuentoSalud = sueldoBruto * (planSalud / 100);
+            const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
+            const baseTributable = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia;
+            const baseTributableUTM = baseTributable / valorUTM;
+
+            console.log(`Descuentos para ${rut}:`, {
+                descuentoAFP,
+                descuentoSalud,
+                descuentoCesantia,
+                baseTributable,
+                baseTributableUTM
+            });
+
+            // Buscar tramo IUSC
+            let tramoIUSC = null;
+            for (const tramo of tablaIUSC) {
+                const desdeUTM = parseFloat(tramo.desde_utm || 0);
+                const hastaUTM = tramo.hasta_utm ? parseFloat(tramo.hasta_utm) : Infinity;
+                if (baseTributableUTM > desdeUTM && baseTributableUTM <= hastaUTM) {
+                    tramoIUSC = tramo;
+                    break;
+                }
+            }
+
+            // Calcular impuesto IUSC
+            let impuestoIUSC = 0;
+            if (tramoIUSC && tramoIUSC.tasa !== null && tramoIUSC.tasa !== undefined) {
+                const tasa = parseFloat(tramoIUSC.tasa || 0);
+                const rebajar = parseFloat(tramoIUSC.rebajar_utm || 0);
+                impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
+                impuestoIUSC = Math.max(0, impuestoIUSC);
+            }
+
+            const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
+            const totalDescuentos = leyesSociales + impuestoIUSC;
+            const sueldoLiquido = sueldoBruto - totalDescuentos;
+
+            // ✅ Verificar que no hay NaN antes de agregar resultado
+            const resultado = {
+                rut,
+                nombre: nombre || 'Sin nombre', // ✅ Agregar nombre
+                sueldoBase: Math.round(sueldoBase * 100) / 100, // Redondear a 2 decimales
+                sueldoBruto: Math.round(sueldoBruto * 100) / 100,
+                fhe: Math.round(fhe * 1000000) / 1000000, // 6 decimales para FHE
+                gratificacion: Math.round(gratificacion * 100) / 100,
+                horasExtrasCalculadas: Math.round(horasExtrasCalculadas * 100) / 100,
+                descuentoAFP: Math.round(descuentoAFP * 100) / 100,
+                descuentoSalud: Math.round(descuentoSalud * 100) / 100,
+                descuentoCesantia: Math.round(descuentoCesantia * 100) / 100,
+                impuestoIUSC: Math.round(impuestoIUSC * 100) / 100,
+                tramoImpuesto: tramoIUSC?.tramo || 0,
+                sueldoLiquido: Math.round(sueldoLiquido * 100) / 100,
+                baseTributable: Math.round(baseTributable * 100) / 100,
+                leyesSociales: Math.round(leyesSociales * 100) / 100,
+                totalDescuentos: Math.round(totalDescuentos * 100) / 100
+            };
+
+            // ✅ Verificar que no hay NaN
+            const hasNaN = Object.values(resultado).some(val =>
+                typeof val === 'number' && isNaN(val)
+            );
+
+            if (hasNaN) {
+                console.error(`❌ NaN detectado en resultado para ${rut}:`, resultado);
+                errores.push({ rut, error: "Error en cálculos - valores inválidos" });
+                continue;
+            }
+
+            console.log(`✅ Resultado válido para ${rut}:`, resultado);
+            resultados.push(resultado);
+        }
+
+        console.log("=== RESUMEN FINAL ===");
+        console.log(`Procesados exitosamente: ${resultados.length}`);
+        console.log(`Errores: ${errores.length}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Cálculo completado',
+            result: resultados,
+            errores
+        });
+
+    } catch (err) {
+        console.error('❌ ERROR GENERAL en calcularLiquidacionesMultiples:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor',
+            error: err.message
+        });
+    }
+};
 
 export {
     getAllIndices,
@@ -715,5 +911,6 @@ export {
     getAFP,
     getAFC,
     calcularLiquidacion,
-    calcularSueldoBaseDesdeNeto
+    calcularSueldoBaseDesdeNeto,
+    calcularLiquidacionesMultiples
 };

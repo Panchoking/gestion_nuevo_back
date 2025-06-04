@@ -658,9 +658,10 @@ const getAllNombreRutContrato = async (req, res) => {
                 dp.nombre AS dp_nombre,
                 dp.rut AS dp_rut,
                 tc.nombre AS tipo_contrato,
-                c.sueldo_base,
+                CAST(c.sueldo_base AS DECIMAL(15,2)) AS sueldo_base,
                 c.cargo AS c_cargo,
-                c.codigo AS c_codigo
+                c.codigo AS c_codigo,
+                CAST(c.id_afp AS UNSIGNED) AS id_afp
             FROM usuario u
             JOIN datos_personales dp ON u.id = dp.id_usuario
             LEFT JOIN contrato c ON u.id = c.id_usuario
