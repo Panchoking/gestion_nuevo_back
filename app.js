@@ -48,7 +48,7 @@ const allowedOrigins = [ // TODO: no deberia ser necesario darle permisos a CHEC
     'http://localhost:5175', // desarrollo frontend 2
     'http://192.168.5.228:5173', // desarrollo front end network
     'https://check.altimec.cl', // VPS
-    'https://gestion.altimec.cl', // VPS
+    'https://gestion.altimec.cl', // VPS'
 ];
 
 app.use(cors({
@@ -67,20 +67,20 @@ app.use(cors({
 
 
 // rutas
-app.use('/auth', authRoutes);
-app.use('/banco', bancoRoutes);
-app.use('/centro-costos', centroCostosRoutes);
-app.use('/horario', horarioRoutes);
-app.use('/feriado', feriadoRoutes);
-app.use('/catalogos', catalogoRoutes);
-app.use('/plataforma', plataformaRoutes);
-app.use('/rol', rolRoutes);
-app.use('/usuario', userRoutes);
-app.use('/datos-personales', dpRoutes);
-app.use('/contrato', contratoRoutes);
-app.use('/asignacion', asignacionRoutes);
-app.use('/clientes', clientesRoutes);
-app.use('/organizacion', organizacionalRoutes);
-app.use('/indices', indicesRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/banco', bancoRoutes);
+app.use('/api/centro-costos', centroCostosRoutes);
+app.use('/api/horario', horarioRoutes);
+app.use('/api/feriado', feriadoRoutes);
+app.use('/api/catalogos', catalogoRoutes);
+app.use('/api/plataforma', plataformaRoutes);
+app.use('/api/rol', rolRoutes);
+app.use('/api/usuario', userRoutes);
+app.use('/api/datos-personales', dpRoutes);
+app.use('/api/contrato', contratoRoutes);
+app.use('/api/asignacion', asignacionRoutes);
+app.use('/api/clientes', clientesRoutes);
+app.use('/api/organizacion', organizacionalRoutes);
+app.use('/api/indices', indicesRoutes);
 
 export default app;

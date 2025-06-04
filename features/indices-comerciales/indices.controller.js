@@ -213,7 +213,40 @@ const getUFByDate = async (req, res) => {
 // CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
 const getUTM = async (req, res) => {
     try {
-        const utmData = await cmfClient.getUTM();
+        const utmData = await cmfClient.getCurrentUTM();
+        if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontró el valor de la UTM del mes'
+            });
+        }
+
+        const utm = utmData.UTMs[0];
+        console.log('UTM del mes obtenida:', utm);
+
+        return res.status(200).json({
+            success: true,
+            message: "Valor UTM del mes encontrado",
+            result: {
+                fecha: utm.Fecha,
+                valor: utm.Valor
+            }
+        });
+    } catch (err) {
+        console.error('Error obteniendo UTM del mes:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error obteniendo UTM del mes',
+            error: err.message
+        });
+    }
+};
+
+const getUTMbyDate = async (req, res) => {
+    try {
+        const fecha = req.query.fecha; // fecha obtenida del front
+
+        const utmData = await cmfClient.getUTMbyDate(fecha);
         if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
             return res.status(404).json({
                 success: false,
@@ -325,7 +358,7 @@ const obtenerIPC = async (req, res) => {
 
 const getAFP = async (req, res) => {
     try {
-        const response = await executeQuery('SELECT * FROM AFP ORDER BY id');
+        const response = await executeQuery('SELECT * FROM afp ORDER BY id');
         if (response.length === 0) {
             return res.status(404).json({
                 success: false,
@@ -346,34 +379,327 @@ const getAFP = async (req, res) => {
     }
 };
 
+const calcularSueldoBaseDesdeNeto = async (req, res) => {
+    try {
+        const { sueldoLiquidoDeseado, horasExtras, diasTrabajados, afp } = req.body;
+
+        console.log("Sueldo líquido deseado:", sueldoLiquidoDeseado);
+        console.log("AFP ID:", afp);
+
+        if (!sueldoLiquidoDeseado || isNaN(sueldoLiquidoDeseado)) {
+            return res.status(400).json({ success: false, message: 'Sueldo líquido deseado inválido' });
+        }
+
+        // Obtener datos de AFP seleccionada
+        const [afpData] = await executeQuery('SELECT * FROM afp WHERE id = ?', [afp]);
+        if (!afpData) {
+            return res.status(400).json({ success: false, message: 'AFP no encontrada' });
+        }
+        const tasaAFP = parseFloat(afpData.tasa);
+        console.log("Tasa AFP seleccionada:", tasaAFP);
+
+        // Obtener índices base
+        const indices = await executeQuery(`
+            SELECT nombre, valor FROM indices_comerciales
+            WHERE nombre IN ("horas_legales", "rmi_general", "plan_salud");
+        `);
+        const getIndice = (nombre) => parseFloat(indices.find(i => i.nombre === nombre)?.valor || 0);
+
+        const horasLegales = getIndice("horas_legales");
+        const sueldoMinimo = getIndice("rmi_general");
+        const planSalud = getIndice("plan_salud"); // 7%
+
+        // Obtener tasa cesantía desde tabla afc (id = 1 = Plazo Indefinido)
+        const [afcData] = await executeQuery('SELECT fi_trabajador FROM afc WHERE id = 1');
+        const tasaCesantia = parseFloat(afcData?.fi_trabajador) || 0;
+
+        // Obtener tabla IUSC
+        const tablaIUSC = await executeQuery(`SELECT * FROM valores_iusc;`);
+
+        // Obtener UTM actual
+        const utmData = await cmfClient.getCurrentUTM();
+        if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontró el valor de la UTM del mes para calcular el impuesto'
+            });
+        }
+
+        const valorUTM = parseFloat(utmData.UTMs[0].Valor.replace(/\./g, '').replace(',', '.'));
+        console.log("Valor UTM del mes:", valorUTM);
+
+        // Cálculo iterativo para encontrar el sueldo base
+        let sueldoBaseEstimado = sueldoLiquidoDeseado; // Estimación inicial
+        let iteracion = 0;
+        const maxIteraciones = 50;
+        const tolerancia = 1; // Tolerancia de $1 peso
+
+        while (iteracion < maxIteraciones) {
+            // Calcular gratificación
+            let gratificacion = sueldoBaseEstimado * 0.25;
+            const topeGratificacion = (sueldoMinimo * 4.75) / 12;
+            if (gratificacion > topeGratificacion) {
+                gratificacion = topeGratificacion;
+            }
+
+            // Calcular FHE
+            const factorBase = (28 / 30) / (horasLegales * 4);
+            const fhe = factorBase * 1.5;
+            const horasExtrasCalculadas = sueldoBaseEstimado * fhe * (horasExtras || 0);
+
+            // Sueldo bruto
+            const sueldoBruto = sueldoBaseEstimado + gratificacion + horasExtrasCalculadas;
+
+            // Descuentos sobre sueldo bruto
+            const descuentoAFP = sueldoBruto * (tasaAFP / 100);
+            const descuentoSalud = sueldoBruto * (planSalud / 100);
+            const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
+
+            // Base tributable
+            const baseTributable = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia;
+            const baseTributableUTM = baseTributable / valorUTM;
+
+            // Buscar tramo IUSC
+            let tramoIUSC = null;
+            for (const tramo of tablaIUSC) {
+                const desdeUTM = parseFloat(tramo.desde_utm);
+                const hastaUTM = tramo.hasta_utm ? parseFloat(tramo.hasta_utm) : Infinity;
+
+                if (baseTributableUTM > desdeUTM && baseTributableUTM <= hastaUTM) {
+                    tramoIUSC = tramo;
+                    break;
+                }
+            }
+
+            // Calcular impuesto IUSC
+            let impuestoIUSC = 0;
+            if (tramoIUSC && tramoIUSC.tasa !== null) {
+                const tasa = parseFloat(tramoIUSC.tasa);
+                const rebajar = parseFloat(tramoIUSC.rebajar_utm);
+                impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
+                impuestoIUSC = Math.max(0, impuestoIUSC);
+            }
+
+            // Sueldo líquido calculado
+            const sueldoLiquidoCalculado = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC;
+
+            // Diferencia entre el deseado y el calculado
+            const diferencia = sueldoLiquidoDeseado - sueldoLiquidoCalculado;
+
+            console.log(`Iteración ${iteracion + 1}: Base=${sueldoBaseEstimado.toFixed(2)}, Líquido=${sueldoLiquidoCalculado.toFixed(2)}, Diferencia=${diferencia.toFixed(2)}`);
+
+            // Si la diferencia es menor que la tolerancia, hemos encontrado la solución
+            if (Math.abs(diferencia) <= tolerancia) {
+                console.log("Convergencia alcanzada en iteración:", iteracion + 1);
+                
+                return res.status(200).json({
+                    success: true,
+                    message: 'Cálculo inverso completado',
+                    result: {
+                        sueldoBaseNecesario: Math.round(sueldoBaseEstimado),
+                        sueldoBruto,
+                        fhe,
+                        gratificacion,
+                        horasExtrasCalculadas,
+                        descuentoAFP,
+                        descuentoSalud,
+                        descuentoCesantia,
+                        impuestoIUSC,
+                        tramoImpuesto: tramoIUSC ? tramoIUSC.tramo : 0,
+                        sueldoLiquidoObtenido: sueldoLiquidoCalculado,
+                        sueldoLiquidoDeseado,
+                        diferencia: Math.abs(diferencia),
+                        iteraciones: iteracion + 1,
+                        baseTributable,
+                        leyesSociales: descuentoAFP + descuentoSalud + descuentoCesantia,
+                        totalDescuentos: descuentoAFP + descuentoSalud + descuentoCesantia + impuestoIUSC
+                    }
+                });
+            }
+
+            // Ajustar estimación para próxima iteración
+            // Factor de ajuste conservador para evitar oscilaciones
+            const factorAjuste = 0.8;
+            sueldoBaseEstimado += diferencia * factorAjuste;
+
+            // Asegurar que el sueldo base no sea negativo
+            if (sueldoBaseEstimado < 0) {
+                sueldoBaseEstimado = sueldoLiquidoDeseado * 0.5;
+            }
+
+            iteracion++;
+        }
+
+        // Si no converge en el número máximo de iteraciones
+        return res.status(400).json({
+            success: false,
+            message: `No se pudo calcular el sueldo base después de ${maxIteraciones} iteraciones. Intente con un valor diferente.`,
+            ultimaEstimacion: sueldoBaseEstimado
+        });
+
+    } catch (err) {
+        console.error('Error calculando sueldo base desde neto:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error calculando sueldo base desde neto',
+            error: err.message
+        });
+    }
+};
+
+// Controlador para calcular la liquidación con AFP, salud y cesantía (trabajador)
+const calcularLiquidacion = async (req, res) => {
+    try {
+        const { sueldoBase, horasExtras, diasTrabajados, afp } = req.body;
+
+        console.log("afp ID:", afp);
+
+        if (!sueldoBase || isNaN(sueldoBase)) {
+            return res.status(400).json({ success: false, message: 'Sueldo base inválido' });
+        }
+
+        // Obtener datos de AFP seleccionada
+        const [afpData] = await executeQuery('SELECT * FROM afp WHERE id = ?', [afp]);
+        if (!afpData) {
+            return res.status(400).json({ success: false, message: 'AFP no encontrada' });
+        }
+        const tasaAFP = parseFloat(afpData.tasa);
+        console.log("Tasa AFP seleccionada:", tasaAFP);
+
+        // Obtener índices base
+        const indices = await executeQuery(`
+            SELECT nombre, valor FROM indices_comerciales
+            WHERE nombre IN ("horas_legales", "rmi_general", "plan_salud");
+        `);
+        const getIndice = (nombre) => parseFloat(indices.find(i => i.nombre === nombre)?.valor || 0);
+
+        const horasLegales = getIndice("horas_legales");
+        const sueldoMinimo = getIndice("rmi_general");
+        const planSalud = getIndice("plan_salud"); // 7%
+
+        // Gratificación legal
+        let gratificacion = sueldoBase * 0.25;
+        const topeGratificacion = (sueldoMinimo * 4.75) / 12;
+        if (gratificacion > topeGratificacion) {
+            gratificacion = topeGratificacion;
+        }
+
+        // FHE
+        const factorBase = (28 / 30) / (horasLegales * 4);
+        const fhe = factorBase * 1.5;
+        const horasExtrasCalculadas = sueldoBase * fhe * horasExtras;
+
+        // Sueldo bruto
+
+        // agregar aguinaldo por UF de la fecha seleccionada
+
+        const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
+        console.log("Sueldo Bruto:", sueldoBruto);
+
+        // Obtener tasa cesantía desde tabla afc (id = 1 = Plazo Indefinido)
+        const [afcData] = await executeQuery('SELECT fi_trabajador FROM afc WHERE id = 1');
+        const tasaCesantia = parseFloat(afcData?.fi_trabajador) || 0;
+
+        // Descuentos (todos sobre sueldo bruto)
+        const descuentoAFP = sueldoBruto * (tasaAFP / 100);
+        const descuentoSalud = sueldoBruto * (planSalud / 100);
+        const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
+
+        const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
+        let totalDescuentos = leyesSociales;
+
+        console.log("Descuento AFP:", descuentoAFP);
+        console.log("Descuento Salud:", descuentoSalud);
+        console.log("Descuento Cesantía:", descuentoCesantia);
+
+        const tablaIUSC = await executeQuery(`SELECT * FROM valores_iusc;`);
+        //console.log("Tabla IUSC obtenida:", tablaIUSC);
+
+        const utmData = await cmfClient.getCurrentUTM();
+        if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontró el valor de la UTM del mes para calcular el impuesto'
+            });
+        }
+
+        const valorUTM = parseFloat(utmData.UTMs[0].Valor.replace(/\./g, '').replace(',', '.'));
+        console.log("Valor UTM del mes:", valorUTM);
+
+        // base tributable (sueldo bruto menos descuentos)
+        const baseTributable = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia;
+        console.log("base tributable:", baseTributable);
+
+        // Convertir sueldo Tributable a UTM
+        const baseTributableUTM = baseTributable / valorUTM;
+        console.log("base tributable en UTM:", baseTributableUTM);
+
+        // Buscar el tramo correspondiente
+        let tramoIUSC = null;
+        for (const tramo of tablaIUSC) {
+            const desdeUTM = parseFloat(tramo.desde_utm);
+            const hastaUTM = tramo.hasta_utm ? parseFloat(tramo.hasta_utm) : Infinity;
+
+            if (baseTributableUTM > desdeUTM && baseTributableUTM <= hastaUTM) {
+                tramoIUSC = tramo;
+                break;
+            }
+        }
+
+        // Calcular impuesto si corresponde
+        let impuestoIUSC = 0;
+        if (tramoIUSC && tramoIUSC.tasa !== null) {
+            const tasa = parseFloat(tramoIUSC.tasa);
+            console.log("tasa : ",tasa);
+            const rebajar = parseFloat(tramoIUSC.rebajar_utm);
+             console.log("rebajar",rebajar);
+            impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;// calculo descuento * tramo
+            impuestoIUSC = Math.max(0, impuestoIUSC); // Asegurar que no sea negativo
+        }
+        console.log("Impuesto IUSC:", impuestoIUSC);
+
+        totalDescuentos += impuestoIUSC; // Sumar impuesto IUSC a los descuentos totales
+
+        console.log("Total Descuentos:", totalDescuentos);
+        console.log("Leyes Sociales:", leyesSociales);
+
+        
+        // Sueldo líquido
+        const sueldoLiquido = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC;
+        console.log("Sueldo Líquido:", sueldoLiquido);
+
+        // Respuesta
+        return res.status(200).json({
+            success: true,
+            message: 'OK',
+            result: {
+                sueldoBruto,
+                fhe,
+                gratificacion,
+                horasExtrasCalculadas,
+                descuentoAFP,
+                descuentoSalud,
+                descuentoCesantia,
+                impuestoIUSC,
+                tramoImpuesto: tramoIUSC ? tramoIUSC.tramo : 0,
+                sueldoLiquido,
+                baseTributable,
+                leyesSociales,
+                totalDescuentos,
+            }
+        });
+
+    } catch (err) {
+        console.error('Error calculando liquidación:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error calculando liquidación',
+            error: err.message
+        });
+    }
+};
 
 
-function calcularSueldoTotal(SB, HE, IMM, horasSemanales) {
-    // Constantes
-    const semanasTrabajadas = 4; // fijo a 4, puedes ajustar si es necesario
-    const diasTrabajados = 28; // asumido constante para factor de proporcionalidad
-
-    // Gratificación legal (25% con tope)
-    const gratificacionBruta = SB * 0.25;
-    const topeMensualGrat = (IMM * 4.75) / 12;
-    const gratificacion = Math.min(gratificacionBruta, topeMensualGrat);
-
-    // Cálculo del factor horas extras con horas semanales como variable
-    const horasMensuales = horasSemanales * semanasTrabajadas;
-    const factorHorasExtras = (diasTrabajados / 30) * horasMensuales * (1.5 / 180);
-    const valorHoraExtra = SB * factorHorasExtras;
-    const pagoHorasExtras = HE * valorHoraExtra;
-
-    // Sueldo total
-    const sueldoTotal = SB + gratificacion + pagoHorasExtras;
-
-    return {
-        sueldoBase: SB,
-        gratificacion,
-        pagoHorasExtras,
-        sueldoTotal: Math.round(sueldoTotal)
-    };
-}
 
 export {
     getAllIndices,
@@ -381,11 +707,13 @@ export {
     updateIndexByField,
     getDailyUF,
     getUFByDate,
+    getUTMbyDate,
     getUTM,
     obtenerIPC,
     getHistorialUTM,
     getTramosIUSC,
     getAFP,
     getAFC,
-    calcularSueldoTotal
+    calcularLiquidacion,
+    calcularSueldoBaseDesdeNeto
 };

@@ -5,6 +5,7 @@ import {
   getIndexByField, 
   updateIndexByField,
   getDailyUF,
+  getUTMbyDate,
   getUTM,
   obtenerIPC,
   getHistorialUTM,
@@ -12,7 +13,8 @@ import {
   getAFP,
   getUFByDate,
   getAFC,
-  calcularSueldoTotal
+  calcularLiquidacion,
+  calcularSueldoBaseDesdeNeto
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -34,7 +36,9 @@ router.get('/afc', authenticateToken, getAFC);
 router.get('/uf', getDailyUF);
 router.get('/uf/date', authenticateToken, getUFByDate);
 
-router.get('/utm', authenticateToken, getUTM);
+router.get('/utm', authenticateToken, getUTM); 
+router.get('/utm/date', authenticateToken, getUTMbyDate);
+
 router.get('/utm/historial', authenticateToken, getHistorialUTM); // Nueva ruta para historial
 
 //iusc
@@ -43,38 +47,8 @@ router.get('/iusc', authenticateToken, getTramosIUSC);
 // IPC
 router.get('/ipc/anual', authenticateToken, obtenerIPC);
 
-
-//calculo sueldo
-
-router.post('/calcular-sueldo', authenticateToken, (req, res) => {
-    const { sueldoBase, horasExtras, imm, horasSemanales } = req.body;
-
-    if (
-        isNaN(sueldoBase) ||
-        isNaN(horasExtras) ||
-        isNaN(imm) ||
-        isNaN(horasSemanales)
-    ) {
-        return res.status(400).json({
-            success: false,
-            message: "Todos los parámetros deben ser números válidos",
-        });
-    }
-
-    try {
-        const resultado = calcularSueldoTotal(sueldoBase, horasExtras, imm, horasSemanales);
-        return res.status(200).json({
-            success: true,
-            result: resultado
-        });
-    } catch (error) {
-        console.error("Error al calcular sueldo total:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Error al calcular sueldo total",
-            error: error.message
-        });
-    }
-});
+// CALCULOS
+router.post('/calculos/liquidacion', calcularLiquidacion);
+router.post('/calculos/sueldo-base', calcularSueldoBaseDesdeNeto);
 
 export default router;
