@@ -654,19 +654,21 @@ const updateEstadoColaborador = async (req, res) => {
 const getAllNombreRutContrato = async (req, res) => {
     try {
         const query = `
-            SELECT 
-                dp.nombre AS dp_nombre,
-                dp.rut AS dp_rut,
-                tc.nombre AS tipo_contrato,
-                CAST(c.sueldo_base AS DECIMAL(15,2)) AS sueldo_base,
-                c.cargo AS c_cargo,
-                c.codigo AS c_codigo,
-                CAST(c.id_afp AS UNSIGNED) AS id_afp
-            FROM usuario u
-            JOIN datos_personales dp ON u.id = dp.id_usuario
-            LEFT JOIN contrato c ON u.id = c.id_usuario
-            LEFT JOIN tipo_contrato tc ON tc.id = c.id_tipo_contrato
-            WHERE u.is_admin = FALSE AND u.is_dummy = FALSE
+                SELECT 
+                    dp.nombre AS dp_nombre,
+                    dp.rut AS dp_rut,
+                    tc.nombre AS tipo_contrato,
+                    CAST(c.sueldo_base AS DECIMAL(15,2)) AS sueldo_base,
+                    c.cargo AS c_cargo,
+                    c.codigo AS c_codigo,
+                    CAST(c.id_afp AS UNSIGNED) AS id_afp,
+                    afp.nombre AS afp_nombre
+                FROM usuario u
+                JOIN datos_personales dp ON u.id = dp.id_usuario
+                LEFT JOIN contrato c ON u.id = c.id_usuario
+                LEFT JOIN tipo_contrato tc ON tc.id = c.id_tipo_contrato
+                LEFT JOIN afp ON afp.id = c.id_afp
+                WHERE u.is_admin = FALSE AND u.is_dummy = FALSE
         `;
 
         const result = await executeQuery(query);
