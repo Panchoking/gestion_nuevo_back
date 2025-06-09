@@ -15,7 +15,10 @@ import {
   getAFC,
   calcularLiquidacion,
   calcularSueldoBaseDesdeNeto,
-  calcularLiquidacionesMultiples
+  calcularLiquidacionesMultiples,
+  calcularCotizacionEmpresa,
+  crearPrestamoInterno,
+  getPrestamosActivos
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -52,5 +55,11 @@ router.get('/ipc/anual', authenticateToken, obtenerIPC);
 router.post('/calculos/liquidacion', calcularLiquidacion);
 router.post('/calculos/sueldo-base', calcularSueldoBaseDesdeNeto);
 router.post('/calculos/liquidaciones', calcularLiquidacionesMultiples);
+
+
+router.post('/cotizacion-empresa', calcularCotizacionEmpresa);
+
+router.post('/prestamo-interno', authenticateToken, crearPrestamoInterno);
+router.get('/prestamos-activos/:userId', authenticateToken, getPrestamosActivos);
 
 export default router;

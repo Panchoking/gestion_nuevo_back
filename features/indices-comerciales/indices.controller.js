@@ -897,7 +897,263 @@ const calcularLiquidacionesMultiples = async (req, res) => {
     }
 };
 
-//
+
+//calculo cotizaciones 
+
+
+const calcularCotizacionEmpresa = async (req, res) => {
+    try {
+        const { sueldoBase, horasExtras, diasTrabajados, afp, valorUF, montoExamenes, aguinaldoUF } = req.body;
+
+        // Validar sueldo base y UF
+        if (!sueldoBase || isNaN(sueldoBase)) {
+            return res.status(400).json({ success: false, message: 'Sueldo base inválido' });
+        }
+
+        if (!valorUF || isNaN(valorUF)) {
+            return res.status(400).json({ success: false, message: 'Valor UF inválido' });
+        }
+
+        // Obtener datos de la AFP (tasa y SIS)
+        const [afpData] = await executeQuery('SELECT tasa, sis FROM afp WHERE id = ?', [afp]);
+        if (!afpData) {
+            return res.status(400).json({ success: false, message: 'AFP no encontrada' });
+        }
+        const tasaSIS = parseFloat(afpData.sis);
+
+        // Obtener tasa AFC empleador (Plazo Indefinido = id 1)
+        const [afcData] = await executeQuery('SELECT fi_empleador FROM afc WHERE id = 1');
+        const tasaAFC = parseFloat(afcData.fi_empleador);
+
+        // Obtener índices
+        const indices = await executeQuery(`
+            SELECT nombre, valor FROM indices_comerciales
+            WHERE nombre IN ("horas_legales", "rmi_general");
+        `);
+        const getIndice = (nombre) => parseFloat(indices.find(i => i.nombre === nombre)?.valor || 0);
+        const horasLegales = getIndice("horas_legales");
+        const sueldoMinimo = getIndice("rmi_general");
+
+        // 1. Gratificación legal
+        let gratificacion = sueldoBase * 0.25;
+        const topeGratificacion = (sueldoMinimo * 4.75) / 12;
+        if (gratificacion > topeGratificacion) gratificacion = topeGratificacion;
+
+        // 2. Horas extras
+        const factorBase = (28 / 30) / (horasLegales * 4);
+        const fhe = factorBase * 1.5;
+        const horasExtrasCalculadas = sueldoBase * fhe * horasExtras;
+
+        // 3. Sueldo bruto
+        const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
+        console.log("sueldo bruto : ", sueldoBruto);
+
+        // 4. Cotizaciones empresa
+        const cotizacionSIS = sueldoBruto * (tasaSIS / 100);
+        console.log("SIS : ", cotizacionSIS);
+
+        const cotizacionAFC = sueldoBruto * (tasaAFC / 100);
+        console.log("AFC:", cotizacionAFC);
+
+        const cotizacionMutual = sueldoBruto * 0.0093;
+        console.log("Mutual", cotizacionMutual);
+
+        // 5. Vacaciones proporcionales
+        const vacacionesProporcionales = (sueldoBase * 2) / 30;
+        console.log(" Vacaciones Proporcionales", vacacionesProporcionales);
+
+        // 6. Exámenes preocupacionales (validar manualmente)
+        const examenesPreocupacionales = isNaN(montoExamenes) ? 35000 : parseFloat(montoExamenes);
+        console.log(" examenes preocupacioanles", examenesPreocupacionales);
+
+        // 7. Indemnización por año de servicio (IAS)
+        let years = 10; // años de servicio del colaborador (valor fijo de prueba)
+        const totalHaberesUF = sueldoBruto / valorUF; // total haberes en UF
+        console.log("total haberes UF", totalHaberesUF);
+
+        let IAS = Math.min(totalHaberesUF, 90) / 8; // IAS máximo es 90 UF, dividido por 8
+        // transformar IAS a CLP
+        IAS = IAS * valorUF;
+
+        console.log("indemnizacion por año de servicio", IAS);
+
+        // 8. Aguinaldo mensual: solo si el input es válido y dentro del rango
+        let aguinaldoMensual = 0;
+        let aguinaldoCLP = 0;
+        let aguinaldoUFValido = 0;
+
+        if (!isNaN(aguinaldoUF) && parseFloat(aguinaldoUF) >= 3 && parseFloat(aguinaldoUF) <= 5) {
+            aguinaldoUFValido = parseFloat(aguinaldoUF);
+            aguinaldoCLP = aguinaldoUFValido * valorUF;
+            aguinaldoMensual = aguinaldoCLP / 12;
+        }
+        console.log("Aguinaldo", aguinaldoMensual);
+
+        // 9. Costo total empresa
+        const costoEmpresa = sueldoBruto + cotizacionSIS + cotizacionAFC + cotizacionMutual +
+            vacacionesProporcionales + examenesPreocupacionales + IAS + aguinaldoMensual;
+        console.log("Costo Empresa", costoEmpresa);
+        return res.status(200).json({
+            success: true,
+            message: 'Cotización empresa calculada correctamente',
+            result: {
+                sueldoBruto,
+                gratificacion,
+                horasExtrasCalculadas,
+                cotizacionSIS,
+                cotizacionAFC,
+                cotizacionMutual,
+                vacacionesProporcionales,
+                examenesPreocupacionales,
+                IAS,
+                aguinaldoUF: aguinaldoUFValido,
+                aguinaldoCLP,
+                aguinaldoMensual,
+                costoEmpresa
+            }
+        });
+
+    } catch (error) {
+        console.error('Error en calcularCotizacionEmpresa:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error en cálculo de cotización',
+            error: error.message
+        });
+    }
+};
+
+
+// Crear un préstamo interno con cálculo automático de cuotas
+const crearPrestamoInterno = async (req, res) => {
+    try {
+        const { id_usuario, monto_total, monto_cuota, fecha_inicio, observaciones } = req.body;
+
+        // Validaciones mínimas
+        if (!id_usuario || !monto_total || !monto_cuota || !fecha_inicio) {
+            return res.status(400).json({ success: false, message: 'Datos incompletos' });
+        }
+
+        if (isNaN(monto_total) || isNaN(monto_cuota) || monto_cuota <= 0) {
+            return res.status(400).json({ success: false, message: 'Montos inválidos' });
+        }
+
+        const insertQuery = `
+            INSERT INTO prestamo_interno (
+                id_usuario, monto_total, monto_cuota, fecha_inicio, observaciones
+            ) VALUES (?, ?, ?, ?, ?)
+        `;
+
+        await executeQuery(insertQuery, [
+            id_usuario,
+            monto_total,
+            monto_cuota,
+            fecha_inicio,
+            observaciones || null
+        ]);
+
+        return res.status(201).json({
+            success: true,
+            message: 'Préstamo interno creado correctamente'
+        });
+
+    } catch (error) {
+        console.error('Error al crear préstamo interno:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error del servidor'
+        });
+    }
+};
+
+
+
+// Versión para préstamo interno con cuotas automáticas
+const aplicarCuotaPrestamoInterno = async (id_usuario) => {
+    const prestamos = await executeQuery(`
+        SELECT id, monto_cuota, cuotas_pagadas, cantidad_cuotas
+        FROM prestamo_interno
+        WHERE id_usuario = ? AND activo = TRUE
+    `, [id_usuario]);
+
+    let total = 0;
+
+    for (const p of prestamos) {
+        total += parseFloat(p.monto_cuota);
+
+        const nuevasCuotas = p.cuotas_pagadas + 1;
+        const activo = nuevasCuotas >= p.cantidad_cuotas ? false : true;
+
+        await executeQuery(`
+            UPDATE prestamo_interno
+            SET cuotas_pagadas = ?, activo = ?
+            WHERE id = ?
+        `, [nuevasCuotas, activo, p.id]);
+    }
+
+    return total;
+};
+
+
+const getPrestamosActivos = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID de usuario requerido'
+            });
+        }
+
+        // Consultar préstamos activos del usuario
+        const prestamosActivos = await executeQuery(`
+            SELECT 
+                id,
+                nombre_credito,
+                monto_total,
+                monto_cuota,
+                cuotas_pagadas,
+                cantidad_cuotas,
+                fecha_inicio,
+                activo,
+                observaciones
+            FROM prestamo_interno 
+            WHERE id_usuario = ? AND activo = TRUE
+            ORDER BY fecha_inicio ASC
+        `, [userId]);
+
+        // Calcular información adicional para cada préstamo
+        const prestamosConInfo = prestamosActivos.map(prestamo => {
+            const cuotasPendientes = prestamo.cantidad_cuotas - prestamo.cuotas_pagadas;
+            const montoRestante = cuotasPendientes * prestamo.monto_cuota;
+
+            return {
+                ...prestamo,
+                cuotas_pendientes: cuotasPendientes,
+                monto_restante: montoRestante,
+                progreso_porcentaje: Math.round((prestamo.cuotas_pagadas / prestamo.cantidad_cuotas) * 100)
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: prestamosConInfo.length > 0 ? 'Préstamos activos encontrados' : 'No hay préstamos activos',
+            result: prestamosConInfo
+        });
+
+    } catch (error) {
+        console.error('Error al obtener préstamos activos:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error del servidor al obtener préstamos activos',
+            error: error.message
+        });
+    }
+};
+
+
+
 
 export {
     getAllIndices,
@@ -914,5 +1170,10 @@ export {
     getAFC,
     calcularLiquidacion,
     calcularSueldoBaseDesdeNeto,
-    calcularLiquidacionesMultiples
+    calcularLiquidacionesMultiples,
+    calcularCotizacionEmpresa,
+    crearPrestamoInterno,
+    aplicarCuotaPrestamoInterno,
+    getPrestamosActivos
+
 };
