@@ -550,7 +550,8 @@ const calcularSueldoBaseDesdeNeto = async (req, res) => {
 // Controlador para calcular la liquidación con AFP, salud y cesantía (trabajador)
 const calcularLiquidacion = async (req, res) => {
     try {
-        const { sueldoBase, horasExtras, diasTrabajados, afp } = req.body;
+        const { sueldoBase, horasExtras, diasTrabajados, afp, montoAnticipo = 0, aceptarExcesoAnticipo = false } = req.body;
+
 
         console.log("afp ID:", afp);
 
@@ -665,8 +666,30 @@ const calcularLiquidacion = async (req, res) => {
 
 
         // Sueldo líquido
-        const sueldoLiquido = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC;
+        let sueldoLiquido = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC ;
         console.log("Sueldo Líquido:", sueldoLiquido);
+
+
+        let anticipo = 0;
+        let porcentajeAnticipo = 0;
+        let errorAnticipo = null;
+
+        if (montoAnticipo > 0) {
+            porcentajeAnticipo = (montoAnticipo / sueldoLiquido) * 100;
+
+            if (porcentajeAnticipo < 15) {
+                errorAnticipo = 'El anticipo debe ser al menos un 15% del sueldo líquido.';
+            } else if (porcentajeAnticipo > 25 && !aceptarExcesoAnticipo) {
+                errorAnticipo = 'El anticipo supera el 25% del sueldo líquido y no fue autorizado.';
+            }
+
+            anticipo = Math.round(montoAnticipo);
+            sueldoLiquido -= anticipo; // ✅ Se actualiza directamente
+        }
+
+        totalDescuentos += anticipo;
+
+
 
         // Respuesta
         return res.status(200).json({
