@@ -903,7 +903,18 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
 const calcularCotizacionEmpresa = async (req, res) => {
     try {
-        const { sueldoBase, horasExtras, diasTrabajados, afp, valorUF, montoExamenes, aguinaldoUF } = req.body;
+        const { sueldoBase, horasExtras, diasTrabajados, afp, valorUF, montoExamenes, aguinaldoUF, costosVarios } = req.body;
+
+        // Validar y sumar costos varios
+        let totalCostosVarios = 0;
+        let costosVariosValidados = [];
+
+        if (Array.isArray(costosVarios)) {
+            costosVariosValidados = costosVarios.filter(item =>
+                item && typeof item.monto === 'number' && !isNaN(item.monto)
+            );
+            totalCostosVarios = costosVariosValidados.reduce((sum, item) => sum + item.monto, 0);
+        }
 
         // Validar sueldo base y UF
         if (!sueldoBase || isNaN(sueldoBase)) {
@@ -991,7 +1002,8 @@ const calcularCotizacionEmpresa = async (req, res) => {
 
         // 9. Costo total empresa
         const costoEmpresa = sueldoBruto + cotizacionSIS + cotizacionAFC + cotizacionMutual +
-            vacacionesProporcionales + examenesPreocupacionales + IAS + aguinaldoMensual;
+            vacacionesProporcionales + examenesPreocupacionales + IAS + aguinaldoMensual + totalCostosVarios;
+
         console.log("Costo Empresa", costoEmpresa);
         return res.status(200).json({
             success: true,
@@ -1009,6 +1021,8 @@ const calcularCotizacionEmpresa = async (req, res) => {
                 aguinaldoUF: aguinaldoUFValido,
                 aguinaldoCLP,
                 aguinaldoMensual,
+                totalCostosVarios,
+                costosVarios: costosVariosValidados,
                 costoEmpresa
             }
         });
