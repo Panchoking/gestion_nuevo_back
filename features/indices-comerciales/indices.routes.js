@@ -18,7 +18,7 @@ import {
   calcularLiquidacionesMultiples,
   calcularCotizacionEmpresa,
   crearPrestamoInterno,
-  getPrestamosActivos
+  getPrestamos,
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -60,6 +60,6 @@ router.post('/calculos/liquidaciones', calcularLiquidacionesMultiples);
 router.post('/cotizacion-empresa', calcularCotizacionEmpresa);
 
 router.post('/prestamo-interno', authenticateToken, crearPrestamoInterno);
-router.get('/prestamos-activos/:userId', authenticateToken, getPrestamosActivos);
+router.get('/prestamos-activos', authenticateToken, getPrestamos);
 
 export default router;

@@ -666,7 +666,7 @@ const calcularLiquidacion = async (req, res) => {
 
 
         // Sueldo líquido
-        let sueldoLiquido = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC ;
+        let sueldoLiquido = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC;
         console.log("Sueldo Líquido:", sueldoLiquido);
 
 
@@ -1061,37 +1061,52 @@ const calcularCotizacionEmpresa = async (req, res) => {
 };
 
 
-// Crear un préstamo interno con cálculo automático de cuotas
+
+
+// Crear un préstamo interno calculando automáticamente la cantidad de cuotas
 const crearPrestamoInterno = async (req, res) => {
     try {
-        const { id_usuario, monto_total, monto_cuota, fecha_inicio, observaciones } = req.body;
+        const { nombre_credito, monto_total, monto_cuota, fecha_inicio } = req.body;
 
-        // Validaciones mínimas
-        if (!id_usuario || !monto_total || !monto_cuota || !fecha_inicio) {
+        // Validaciones básicas
+        if (!nombre_credito || !monto_total || !monto_cuota || !fecha_inicio) {
             return res.status(400).json({ success: false, message: 'Datos incompletos' });
         }
 
-        if (isNaN(monto_total) || isNaN(monto_cuota) || monto_cuota <= 0) {
+        const monto = parseFloat(monto_total);
+        const cuota = parseFloat(monto_cuota);
+
+        if (isNaN(monto) || isNaN(cuota) || monto <= 0 || cuota <= 0) {
             return res.status(400).json({ success: false, message: 'Montos inválidos' });
         }
 
+        // Calcular la cantidad de cuotas (redondear hacia arriba)
+        const cantidad_cuotas = Math.ceil(monto / cuota);
+
         const insertQuery = `
             INSERT INTO prestamo_interno (
-                id_usuario, monto_total, monto_cuota, fecha_inicio, observaciones
+                nombre_credito, monto_total, monto_cuota, cantidad_cuotas, fecha_inicio
             ) VALUES (?, ?, ?, ?, ?)
         `;
 
         await executeQuery(insertQuery, [
-            id_usuario,
-            monto_total,
-            monto_cuota,
-            fecha_inicio,
-            observaciones || null
+            nombre_credito,
+            monto,
+            cuota,
+            cantidad_cuotas,
+            fecha_inicio
         ]);
 
         return res.status(201).json({
             success: true,
-            message: 'Préstamo interno creado correctamente'
+            message: 'Préstamo interno creado correctamente',
+            result: {
+                nombre_credito,
+                monto_total: monto,
+                monto_cuota: cuota,
+                cantidad_cuotas,
+                fecha_inicio
+            }
         });
 
     } catch (error) {
@@ -1105,91 +1120,47 @@ const crearPrestamoInterno = async (req, res) => {
 
 
 
-// Versión para préstamo interno con cuotas automáticas
-const aplicarCuotaPrestamoInterno = async (id_usuario) => {
-    const prestamos = await executeQuery(`
-        SELECT id, monto_cuota, cuotas_pagadas, cantidad_cuotas
-        FROM prestamo_interno
-        WHERE id_usuario = ? AND activo = TRUE
-    `, [id_usuario]);
-
-    let total = 0;
-
-    for (const p of prestamos) {
-        total += parseFloat(p.monto_cuota);
-
-        const nuevasCuotas = p.cuotas_pagadas + 1;
-        const activo = nuevasCuotas >= p.cantidad_cuotas ? false : true;
-
-        await executeQuery(`
-            UPDATE prestamo_interno
-            SET cuotas_pagadas = ?, activo = ?
-            WHERE id = ?
-        `, [nuevasCuotas, activo, p.id]);
-    }
-
-    return total;
-};
-
-
-const getPrestamosActivos = async (req, res) => {
+// Obtener todos los préstamos internos con información adicional
+const getPrestamos = async (req, res) => {
     try {
-        const { userId } = req.params;
-
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: 'ID de usuario requerido'
-            });
-        }
-
-        // Consultar préstamos activos del usuario
-        const prestamosActivos = await executeQuery(`
-            SELECT 
-                id,
-                nombre_credito,
-                monto_total,
-                monto_cuota,
-                cuotas_pagadas,
-                cantidad_cuotas,
-                fecha_inicio,
-                activo,
-                observaciones
-            FROM prestamo_interno 
-            WHERE id_usuario = ? AND activo = TRUE
+        const prestamos = await executeQuery(`
+            SELECT id, nombre_credito, monto_total, monto_cuota, cantidad_cuotas, fecha_inicio
+            FROM prestamo_interno
             ORDER BY fecha_inicio ASC
-        `, [userId]);
+        `);
 
-        // Calcular información adicional para cada préstamo
-        const prestamosConInfo = prestamosActivos.map(prestamo => {
-            const cuotasPendientes = prestamo.cantidad_cuotas - prestamo.cuotas_pagadas;
-            const montoRestante = cuotasPendientes * prestamo.monto_cuota;
+        // Calcular monto restante y ajustar la última cuota si es necesario
+        const prestamosConDetalle = prestamos.map(prestamo => {
+            const { monto_total, monto_cuota, cantidad_cuotas } = prestamo;
+
+            const totalCalculado = monto_cuota * cantidad_cuotas;
+            const diferencia = parseFloat((totalCalculado - monto_total).toFixed(2));
+
+            const ultima_cuota = diferencia !== 0
+                ? parseFloat((monto_cuota - diferencia).toFixed(2))
+                : monto_cuota;
 
             return {
                 ...prestamo,
-                cuotas_pendientes: cuotasPendientes,
-                monto_restante: montoRestante,
-                progreso_porcentaje: Math.round((prestamo.cuotas_pagadas / prestamo.cantidad_cuotas) * 100)
+                monto_restante: monto_total,
+                ultima_cuota_aproximada: ultima_cuota
             };
         });
 
         return res.status(200).json({
             success: true,
-            message: prestamosConInfo.length > 0 ? 'Préstamos activos encontrados' : 'No hay préstamos activos',
-            result: prestamosConInfo
+            message: prestamosConDetalle.length > 0 ? 'Préstamos encontrados' : 'No hay préstamos registrados',
+            result: prestamosConDetalle
         });
 
     } catch (error) {
-        console.error('Error al obtener préstamos activos:', error);
+        console.error('Error al obtener préstamos:', error);
         return res.status(500).json({
             success: false,
-            message: 'Error del servidor al obtener préstamos activos',
-            error: error.message
+            message: 'Error del servidor al obtener préstamos'
         });
     }
 };
-
-
 
 
 export {
@@ -1210,7 +1181,6 @@ export {
     calcularLiquidacionesMultiples,
     calcularCotizacionEmpresa,
     crearPrestamoInterno,
-    aplicarCuotaPrestamoInterno,
-    getPrestamosActivos
+    getPrestamos
 
 };
