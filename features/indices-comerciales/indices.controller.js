@@ -926,6 +926,9 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
 const calcularCotizacionEmpresa = async (req, res) => {
     try {
+
+
+
         const { sueldoBase, horasExtras, diasTrabajados, afp, valorUF, montoExamenes, aguinaldoUF, costosVarios } = req.body;
 
         // Validar y sumar costos varios
@@ -1027,6 +1030,17 @@ const calcularCotizacionEmpresa = async (req, res) => {
         const costoEmpresa = sueldoBruto + cotizacionSIS + cotizacionAFC + cotizacionMutual +
             vacacionesProporcionales + examenesPreocupacionales + IAS + aguinaldoMensual + totalCostosVarios;
 
+            
+        // Porcentajes adicionales sobre el costo base
+        const GastosGenerales = 0.10 *costoEmpresa; // 10%
+        console.log("Gastos generales : ",GastosGenerales)
+        const Administracion = 0.05*costoEmpresa;  // 5%
+        console.log("administracion : ",Administracion);
+        const Utilidad = 0.05*costoEmpresa;        // 5%
+        console.log("Utilidad : ", Utilidad);
+
+        const costoTotalFinal = costoEmpresa + GastosGenerales + Administracion + Utilidad;     
+
         console.log("Costo Empresa", costoEmpresa);
         return res.status(200).json({
             success: true,
@@ -1046,7 +1060,13 @@ const calcularCotizacionEmpresa = async (req, res) => {
                 aguinaldoMensual,
                 totalCostosVarios,
                 costosVarios: costosVariosValidados,
-                costoEmpresa
+                costoEmpresa,
+                GastosGenerales,
+                Administracion,
+                Utilidad,
+                costoTotalFinal
+
+                
             }
         });
 
