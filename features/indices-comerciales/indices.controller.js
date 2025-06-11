@@ -924,11 +924,9 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 //calculo cotizaciones 
 
 
+// Controlador para calcular la cotización de la empresa (prorrateado correctamente)
 const calcularCotizacionEmpresa = async (req, res) => {
     try {
-
-
-
         const { sueldoBase, horasExtras, diasTrabajados, afp, valorUF, montoExamenes, aguinaldoUF, costosVarios } = req.body;
 
         // Validar y sumar costos varios
@@ -942,27 +940,26 @@ const calcularCotizacionEmpresa = async (req, res) => {
             totalCostosVarios = costosVariosValidados.reduce((sum, item) => sum + item.monto, 0);
         }
 
-        // Validar sueldo base y UF
+        // Validaciones de sueldo base y UF
         if (!sueldoBase || isNaN(sueldoBase)) {
             return res.status(400).json({ success: false, message: 'Sueldo base inválido' });
         }
-
         if (!valorUF || isNaN(valorUF)) {
             return res.status(400).json({ success: false, message: 'Valor UF inválido' });
         }
 
-        // Obtener datos de la AFP (tasa y SIS)
+        // Obtener datos de AFP (tasa y SIS)
         const [afpData] = await executeQuery('SELECT tasa, sis FROM afp WHERE id = ?', [afp]);
         if (!afpData) {
             return res.status(400).json({ success: false, message: 'AFP no encontrada' });
         }
         const tasaSIS = parseFloat(afpData.sis);
 
-        // Obtener tasa AFC empleador (Plazo Indefinido = id 1)
+        // Obtener tasa AFC empleador
         const [afcData] = await executeQuery('SELECT fi_empleador FROM afc WHERE id = 1');
         const tasaAFC = parseFloat(afcData.fi_empleador);
 
-        // Obtener índices
+        // Obtener índices legales
         const indices = await executeQuery(`
             SELECT nombre, valor FROM indices_comerciales
             WHERE nombre IN ("horas_legales", "rmi_general");
@@ -971,50 +968,37 @@ const calcularCotizacionEmpresa = async (req, res) => {
         const horasLegales = getIndice("horas_legales");
         const sueldoMinimo = getIndice("rmi_general");
 
-        // 1. Gratificación legal
+        // Gratificación legal prorrateada
         let gratificacion = sueldoBase * 0.25;
         const topeGratificacion = (sueldoMinimo * 4.75) / 12;
         if (gratificacion > topeGratificacion) gratificacion = topeGratificacion;
 
-        // 2. Horas extras
+        // Horas extras prorrateadas
         const factorBase = (28 / 30) / (horasLegales * 4);
-        const fhe = factorBase * 1.5;
+        const fhe = factorBase * 1.5;S
         const horasExtrasCalculadas = sueldoBase * fhe * horasExtras;
 
-        // 3. Sueldo bruto
+        // Sueldo bruto mensual
         const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
-        console.log("sueldo bruto : ", sueldoBruto);
 
-        // 4. Cotizaciones empresa
+        // Cotizaciones legales empresa (proporcionales al mes)
         const cotizacionSIS = sueldoBruto * (tasaSIS / 100);
-        console.log("SIS : ", cotizacionSIS);
-
         const cotizacionAFC = sueldoBruto * (tasaAFC / 100);
-        console.log("AFC:", cotizacionAFC);
-
         const cotizacionMutual = sueldoBruto * 0.0093;
-        console.log("Mutual", cotizacionMutual);
 
-        // 5. Vacaciones proporcionales
+        // Vacaciones proporcionales (prorrateadas mensual)
         const vacacionesProporcionales = (sueldoBase * 2) / 30;
-        console.log(" Vacaciones Proporcionales", vacacionesProporcionales);
 
-        // 6. Exámenes preocupacionales (validar manualmente)
+        // Exámenes preocupacionales prorrateados mensual
         const examenesPreocupacionales = isNaN(montoExamenes) ? 35000 : parseFloat(montoExamenes);
-        console.log(" examenes preocupacioanles", examenesPreocupacionales);
 
-        // 7. Indemnización por año de servicio (IAS)
-        let years = 10; // años de servicio del colaborador (valor fijo de prueba)
-        const totalHaberesUF = sueldoBruto / valorUF; // total haberes en UF
-        console.log("total haberes UF", totalHaberesUF);
+        // Indemnización anual por año de servicio prorrateada
+        let years = 10; // valor fijo de prueba
+        const totalHaberesUF = sueldoBruto / valorUF;
+        let IAS = Math.min(totalHaberesUF, 90) / 8;
+        IAS = IAS * valorUF; // lo expresamos mensualizado
 
-        let IAS = Math.min(totalHaberesUF, 90) / 8; // IAS máximo es 90 UF, dividido por 8
-        // transformar IAS a CLP
-        IAS = IAS * valorUF;
-
-        console.log("indemnizacion por año de servicio", IAS);
-
-        // 8. Aguinaldo mensual: solo si el input es válido y dentro del rango
+        // Aguinaldo mensual prorrateado
         let aguinaldoMensual = 0;
         let aguinaldoCLP = 0;
         let aguinaldoUFValido = 0;
@@ -1024,24 +1008,18 @@ const calcularCotizacionEmpresa = async (req, res) => {
             aguinaldoCLP = aguinaldoUFValido * valorUF;
             aguinaldoMensual = aguinaldoCLP / 12;
         }
-        console.log("Aguinaldo", aguinaldoMensual);
 
-        // 9. Costo total empresa
-        const costoEmpresa = sueldoBruto + cotizacionSIS + cotizacionAFC + cotizacionMutual +
-            vacacionesProporcionales + examenesPreocupacionales + IAS + aguinaldoMensual + totalCostosVarios;
+        // Costo mensual empresa prorrateado
+        const costoEmpresa = sueldoBruto + cotizacionSIS + cotizacionAFC + cotizacionMutual
+            + vacacionesProporcionales + examenesPreocupacionales + IAS + aguinaldoMensual + totalCostosVarios;
 
-            
-        // Porcentajes adicionales sobre el costo base
-        const GastosGenerales = 0.10 *costoEmpresa; // 10%
-        console.log("Gastos generales : ",GastosGenerales)
-        const Administracion = 0.05*costoEmpresa;  // 5%
-        console.log("administracion : ",Administracion);
-        const Utilidad = 0.05*costoEmpresa;        // 5%
-        console.log("Utilidad : ", Utilidad);
+        // Cálculos de sobrecarga administrativa
+        const GastosGenerales = costoEmpresa * 0.10;
+        const Administracion = costoEmpresa * 0.05;
+        const Utilidad = costoEmpresa * 0.05;
 
-        const costoTotalFinal = costoEmpresa + GastosGenerales + Administracion + Utilidad;     
+        const costoTotalFinal = costoEmpresa + GastosGenerales + Administracion + Utilidad;
 
-        console.log("Costo Empresa", costoEmpresa);
         return res.status(200).json({
             success: true,
             message: 'Cotización empresa calculada correctamente',
@@ -1065,8 +1043,6 @@ const calcularCotizacionEmpresa = async (req, res) => {
                 Administracion,
                 Utilidad,
                 costoTotalFinal
-
-                
             }
         });
 
@@ -1079,7 +1055,6 @@ const calcularCotizacionEmpresa = async (req, res) => {
         });
     }
 };
-
 
 
 
