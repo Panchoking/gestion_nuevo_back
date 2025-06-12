@@ -975,7 +975,7 @@ const calcularCotizacionEmpresa = async (req, res) => {
 
         // Horas extras prorrateadas
         const factorBase = (28 / 30) / (horasLegales * 4);
-        const fhe = factorBase * 1.5;S
+        const fhe = factorBase * 1.5;
         const horasExtrasCalculadas = sueldoBase * fhe * horasExtras;
 
         // Sueldo bruto mensual
