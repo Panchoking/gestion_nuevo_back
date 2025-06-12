@@ -547,17 +547,23 @@ const calcularSueldoBaseDesdeNeto = async (req, res) => {
     }
 };
 
-// Controlador para calcular la liquidación con AFP, salud y cesantía (trabajador)
 const calcularLiquidacion = async (req, res) => {
     try {
         const { sueldoBase, horasExtras, diasTrabajados, afp, montoAnticipo = 0, aceptarExcesoAnticipo = false } = req.body;
-
 
         console.log("afp ID:", afp);
 
         if (!sueldoBase || isNaN(sueldoBase)) {
             return res.status(400).json({ success: false, message: 'Sueldo base inválido' });
         }
+
+        // Validación de días trabajados
+        const diasTrab = diasTrabajados && diasTrabajados > 0 ? diasTrabajados : 30;
+        console.log("dias trabajados : ", diasTrabajados);
+
+        // Aplicamos prorrateo del sueldo base
+        const sueldoBaseProrrateado = (sueldoBase / 30) * diasTrab;
+        console.log("sueldo prorateado : ", sueldoBaseProrrateado);
 
         // Obtener datos de AFP seleccionada
         const [afpData] = await executeQuery('SELECT * FROM afp WHERE id = ?', [afp]);
@@ -579,22 +585,19 @@ const calcularLiquidacion = async (req, res) => {
         const planSalud = getIndice("plan_salud"); // 7%
 
         // Gratificación legal
-        let gratificacion = sueldoBase * 0.25;
+        let gratificacion = sueldoBaseProrrateado * 0.25;
         const topeGratificacion = (sueldoMinimo * 4.75) / 12;
         if (gratificacion > topeGratificacion) {
             gratificacion = topeGratificacion;
         }
 
-        // FHE
+        // FHE preguntar?
         const factorBase = (28 / 30) / (horasLegales * 4);
         const fhe = factorBase * 1.5;
         const horasExtrasCalculadas = sueldoBase * fhe * horasExtras;
 
-        // Sueldo bruto
-
-        // agregar aguinaldo por UF de la fecha seleccionada
-
-        const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
+        // Sueldo bruto (prorrateado)
+        const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas;// estaria afectando el tramo al cual se ingresa
         console.log("Sueldo Bruto:", sueldoBruto);
 
         // Obtener tasa cesantía desde tabla afc (id = 1 = Plazo Indefinido)
@@ -684,7 +687,7 @@ const calcularLiquidacion = async (req, res) => {
             }
 
             anticipo = Math.round(montoAnticipo);
-            sueldoLiquido -= anticipo; // ✅ Se actualiza directamente
+            sueldoLiquido -= anticipo; //  Se actualiza directamente
         }
 
         totalDescuentos += anticipo;
@@ -927,7 +930,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 // Controlador para calcular la cotización de la empresa (prorrateado correctamente)
 const calcularCotizacionEmpresa = async (req, res) => {
     try {
-        const { sueldoBase, horasExtras, diasTrabajados, afp, valorUF, montoExamenes, aguinaldoUF, costosVarios } = req.body;
+        const { sueldoBase, horasExtras, afp, valorUF, montoExamenes, aguinaldoUF, costosVarios } = req.body;
 
         // Validar y sumar costos varios
         let totalCostosVarios = 0;
