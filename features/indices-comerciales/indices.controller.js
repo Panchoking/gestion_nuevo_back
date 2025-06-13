@@ -546,34 +546,25 @@ const calcularSueldoBaseDesdeNeto = async (req, res) => {
         });
     }
 };
-
 const calcularLiquidacion = async (req, res) => {
     try {
         const { sueldoBase, horasExtras, diasTrabajados, afp, montoAnticipo = 0, aceptarExcesoAnticipo = false } = req.body;
-
-        console.log("afp ID:", afp);
 
         if (!sueldoBase || isNaN(sueldoBase)) {
             return res.status(400).json({ success: false, message: 'Sueldo base inválido' });
         }
 
-        // Validación de días trabajados
         const diasTrab = diasTrabajados && diasTrabajados > 0 ? diasTrabajados : 30;
-        console.log("dias trabajados : ", diasTrabajados);
-
-        // Aplicamos prorrateo del sueldo base
         const sueldoBaseProrrateado = (sueldoBase / 30) * diasTrab;
-        console.log("sueldo prorateado : ", sueldoBaseProrrateado);
 
-        // Obtener datos de AFP seleccionada
+        // Obtener datos de AFP
         const [afpData] = await executeQuery('SELECT * FROM afp WHERE id = ?', [afp]);
         if (!afpData) {
             return res.status(400).json({ success: false, message: 'AFP no encontrada' });
         }
         const tasaAFP = parseFloat(afpData.tasa);
-        console.log("Tasa AFP seleccionada:", tasaAFP);
 
-        // Obtener índices base
+        // Obtener índices
         const indices = await executeQuery(`
             SELECT nombre, valor FROM indices_comerciales
             WHERE nombre IN ("horas_legales", "rmi_general", "plan_salud");
@@ -582,123 +573,115 @@ const calcularLiquidacion = async (req, res) => {
 
         const horasLegales = getIndice("horas_legales");
         const sueldoMinimo = getIndice("rmi_general");
-        const planSalud = getIndice("plan_salud"); // 7%
+        const planSalud = getIndice("plan_salud");
 
-        // Gratificación legal
-        let gratificacion = sueldoBaseProrrateado * 0.25;
-        const topeGratificacion = (sueldoMinimo * 4.75) / 12;
-        if (gratificacion > topeGratificacion) {
-            gratificacion = topeGratificacion;
+        // 1 Gratificación mensual para determinar tramo IUSC
+        let gratificacionMensual = sueldoBase * 0.25;
+        const topeGratificacionMensual = (sueldoMinimo * 4.75) / 12;
+        if (gratificacionMensual > topeGratificacionMensual) {
+            gratificacionMensual = topeGratificacionMensual;
         }
+        const sueldoBrutoMensualPactado = sueldoBase + gratificacionMensual;
+        console.log("SUELDO BRUTO PACTADO : ", sueldoBrutoMensualPactado)
 
-        // FHE preguntar?
+        // 2 FHE (Horas extras siempre sobre sueldo mensual pactado)
         const factorBase = (28 / 30) / (horasLegales * 4);
         const fhe = factorBase * 1.5;
         const horasExtrasCalculadas = sueldoBase * fhe * horasExtras;
 
-        // Sueldo bruto (prorrateado)
-        const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas;// estaria afectando el tramo al cual se ingresa
-        console.log("Sueldo Bruto:", sueldoBruto);
-
-        // Obtener tasa cesantía desde tabla afc (id = 1 = Plazo Indefinido)
+        // 3️ Obtener tasa cesantía
         const [afcData] = await executeQuery('SELECT fi_trabajador FROM afc WHERE id = 1');
         const tasaCesantia = parseFloat(afcData?.fi_trabajador) || 0;
 
-        // Descuentos (todos sobre sueldo bruto)
-        const descuentoAFP = sueldoBruto * (tasaAFP / 100);
-        const descuentoSalud = sueldoBruto * (planSalud / 100);
-        const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
-
-        const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
-        let totalDescuentos = leyesSociales;
-
-        console.log("Descuento AFP:", descuentoAFP);
-        console.log("Descuento Salud:", descuentoSalud);
-        console.log("Descuento Cesantía:", descuentoCesantia);
-
-        const tablaIUSC = await executeQuery(`SELECT * FROM valores_iusc;`);
-        //console.log("Tabla IUSC obtenida:", tablaIUSC);
-
+        // 4 Obtener UTM
         const utmData = await cmfClient.getCurrentUTM();
         if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'No se encontró el valor de la UTM del mes para calcular el impuesto'
-            });
+            return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM del mes' });
         }
-
         const valorUTM = parseFloat(utmData.UTMs[0].Valor.replace(/\./g, '').replace(',', '.'));
-        console.log("Valor UTM del mes:", valorUTM);
 
-        // base tributable (sueldo bruto menos descuentos)
-        const baseTributable = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia;
-        console.log("base tributable:", baseTributable);
+        // 5 Calcular tramo IUSC sobre base mensual pactada
+        const baseTributableMensual = sueldoBrutoMensualPactado
+            - (sueldoBase * (tasaAFP / 100))
+            - (sueldoBase * (planSalud / 100))
+            - (sueldoBase * (tasaCesantia / 100));
 
-        // Convertir sueldo Tributable a UTM
-        const baseTributableUTM = baseTributable / valorUTM;
-        console.log("base tributable en UTM:", baseTributableUTM);
 
-        // Buscar el tramo correspondiente
+        const baseTributableUTM = baseTributableMensual / valorUTM;
+
+        const tablaIUSC = await executeQuery(`SELECT * FROM valores_iusc;`);
         let tramoIUSC = null;
         for (const tramo of tablaIUSC) {
             const desdeUTM = parseFloat(tramo.desde_utm);
             const hastaUTM = tramo.hasta_utm ? parseFloat(tramo.hasta_utm) : Infinity;
-
             if (baseTributableUTM > desdeUTM && baseTributableUTM <= hastaUTM) {
                 tramoIUSC = tramo;
                 break;
             }
         }
 
-        // Calcular impuesto si corresponde
         let impuestoIUSC = 0;
         if (tramoIUSC && tramoIUSC.tasa !== null) {
             const tasa = parseFloat(tramoIUSC.tasa);
-            console.log("tasa : ", tasa);
             const rebajar = parseFloat(tramoIUSC.rebajar_utm);
-            console.log("rebajar", rebajar);
-            impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;// calculo descuento * tramo
-            impuestoIUSC = Math.max(0, impuestoIUSC); // Asegurar que no sea negativo
+            impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
+            impuestoIUSC = Math.max(0, impuestoIUSC);
         }
-        console.log("Impuesto IUSC:", impuestoIUSC);
+        console.log("impuesto IUSC : ", impuestoIUSC);
 
-        totalDescuentos += impuestoIUSC; // Sumar impuesto IUSC a los descuentos totales
+        // 6 Ahora sí: calcular gratificación prorrateada real
+        let gratificacion = sueldoBaseProrrateado * 0.25;
+        const topeGratificacion = (sueldoMinimo * 4.75) / 12;
+        if (gratificacion > topeGratificacion) {
+            gratificacion = topeGratificacion;
+        }
+        console.log("gratificacion : ", gratificacion);
 
-        console.log("Total Descuentos:", totalDescuentos);
-        console.log("Leyes Sociales:", leyesSociales);
+        // 7 Sueldo Bruto devengado real
+        const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas;
+        console.log("sueldo bruto real con proraeteo : ", sueldoBruto);
 
+        // 8 Descuentos sobre sueldo bruto devengado
+        const descuentoAFP = sueldoBruto * (tasaAFP / 100);
+        console.log("descuentos AFP : ", descuentoAFP);
+        const descuentoSalud = sueldoBruto * (planSalud / 100);
+        console.log("descuentos SALUD : ", descuentoSalud);
+        const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
+        console.log("descuento cesantia : ", descuentoCesantia);
+        const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
+        console.log("leyes sociales : ", leyesSociales);
 
-        // Sueldo líquido
-        let sueldoLiquido = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC;
-        console.log("Sueldo Líquido:", sueldoLiquido);
+        // 9 Sueldo líquido inicial
+        let sueldoLiquido = sueldoBruto - leyesSociales - impuestoIUSC;
+        console.log("sueldo liquido: ", sueldoLiquido);
 
-
+        // 10 Anticipo
         let anticipo = 0;
         let porcentajeAnticipo = 0;
         let errorAnticipo = null;
-
         if (montoAnticipo > 0) {
             porcentajeAnticipo = (montoAnticipo / sueldoLiquido) * 100;
-
             if (porcentajeAnticipo < 15) {
                 errorAnticipo = 'El anticipo debe ser al menos un 15% del sueldo líquido.';
             } else if (porcentajeAnticipo > 25 && !aceptarExcesoAnticipo) {
-                errorAnticipo = 'El anticipo supera el 25% del sueldo líquido y no fue autorizado.';
+                errorAnticipo = 'El anticipo supera el 25% y no fue autorizado.';
             }
-
             anticipo = Math.round(montoAnticipo);
-            sueldoLiquido -= anticipo; //  Se actualiza directamente
+            sueldoLiquido -= anticipo;
         }
 
-        totalDescuentos += anticipo;
+        // 11 Base tributable real devengado (solo referencia contable)
+        const baseTributable = sueldoBruto - leyesSociales;
 
+        // 12 Total descuentos
+        const totalDescuentos = leyesSociales + impuestoIUSC + anticipo;
 
-
-        // Respuesta
+        // ✅ Respuesta final
         return res.status(200).json({
             success: true,
             message: 'OK',
             result: {
+                sueldoBaseProrrateado,
                 sueldoBruto,
                 fhe,
                 gratificacion,
@@ -711,19 +694,16 @@ const calcularLiquidacion = async (req, res) => {
                 sueldoLiquido,
                 baseTributable,
                 leyesSociales,
-                totalDescuentos,
+                totalDescuentos
             }
         });
 
     } catch (err) {
         console.error('Error calculando liquidación:', err);
-        return res.status(500).json({
-            success: false,
-            message: 'Error calculando liquidación',
-            error: err.message
-        });
+        return res.status(500).json({ success: false, message: 'Error calculando liquidación', error: err.message });
     }
 };
+
 
 
 const calcularLiquidacionesMultiples = async (req, res) => {
@@ -748,12 +728,9 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM' });
         }
 
-        // ✅ Convertir todos los valores a números
         const getIndice = (nombre) => {
             const indice = indices.find(i => i.nombre === nombre);
-            const valor = parseFloat(indice?.valor || 0);
-            console.log(`Índice ${nombre}:`, valor);
-            return valor;
+            return parseFloat(indice?.valor || 0);
         };
 
         const horasLegales = getIndice("horas_legales");
@@ -762,88 +739,99 @@ const calcularLiquidacionesMultiples = async (req, res) => {
         const tasaCesantia = parseFloat(afc[0]?.fi_trabajador || 0);
         const valorUTM = parseFloat(utmData.UTMs[0].Valor.replace(/\./g, '').replace(',', '.'));
 
-        console.log("Valores calculados:", {
-            horasLegales,
-            sueldoMinimo,
-            planSalud,
-            tasaCesantia,
-            valorUTM
-        });
-
         const resultados = [];
         const errores = [];
 
-        for (const [index, trabajador] of trabajadores.entries()) {
-            console.log(`\n--- Trabajador ${index + 1}/${trabajadores.length} ---`);
+        for (const trabajador of trabajadores) {
+            const { sueldoBase: sueldoBaseRaw, horasExtras = 0, diasTrabajados = 30, afp: afpId, rut, nombre } = trabajador;
 
-            const { sueldoBase: sueldoBaseRaw, horasExtras = 0, diasTrabajados = 28, afp: afpId, rut, nombre } = trabajador;
-
-            // ✅ CONVERSIÓN CORRECTA: Asegurar que todo sea número
             const sueldoBase = parseFloat(sueldoBaseRaw || 0);
             const horasExtrasNum = parseFloat(horasExtras || 0);
-            const diasTrabajadosNum = parseInt(diasTrabajados || 28);
-
-            console.log(`Valores convertidos para ${rut}:`, {
-                sueldoBaseOriginal: sueldoBaseRaw,
-                sueldoBaseNumerico: sueldoBase,
-                horasExtrasNum,
-                diasTrabajadosNum
-            });
+            const diasTrabajadosNum = parseInt(diasTrabajados || 30);
 
             if (!sueldoBase || isNaN(sueldoBase) || sueldoBase <= 0) {
-                console.log(`❌ Sueldo base inválido para ${rut}:`, sueldoBase);
                 errores.push({ rut, error: "Sueldo base inválido" });
                 continue;
             }
 
             const afp = afps.find(a => a.id == afpId);
             if (!afp) {
-                console.log(`❌ AFP no encontrada para ${rut}. ID buscado: ${afpId}`);
                 errores.push({ rut, error: `AFP no válida o no encontrada (ID: ${afpId})` });
                 continue;
             }
-
-            // ✅ Convertir tasa AFP a número
             const tasaAFP = parseFloat(afp.tasa || 0);
 
-            // ✅ Cálculo de gratificación
-            let gratificacion = sueldoBase * 0.25;
-            const topeGratificacion = (sueldoMinimo * 4.75) / 12;
-            if (gratificacion > topeGratificacion) {
-                gratificacion = topeGratificacion;
+            // ✅ INICIO BLOQUE DE ACTUALIZACIÓN CON OPTIMIZACIÓN
+            try {
+                // 🔧 NO limpiar rut → lo buscamos tal cual lo tenemos almacenado
+                const rutBuscado = rut.trim().toUpperCase();
+
+                // 🔎 Buscamos el id_usuario en la BD usando el rut formateado que ya guardas
+                const usuario = await executeQuery(`
+                    SELECT u.id 
+                    FROM usuario u
+                    INNER JOIN datos_personales dp ON u.id = dp.id_usuario
+                    WHERE dp.rut = ?
+                `, [rutBuscado]);
+
+                if (usuario.length > 0) {
+                    const idUsuario = usuario[0].id;
+
+                    // 🔎 Buscamos si ya existe contrato
+                    const contrato = await executeQuery(
+                        'SELECT sueldo_base FROM contrato WHERE id_usuario = ?',
+                        [idUsuario]
+                    );
+
+                    if (contrato.length > 0) {
+                        const sueldoActualBD = parseFloat(contrato[0].sueldo_base);
+                        console.log(`🟢 Comparando sueldos ID:${idUsuario} | Actual: ${sueldoActualBD} | Nuevo: ${sueldoBase}`);
+
+                        if (sueldoActualBD !== sueldoBase) {
+                            await executeQuery(
+                                'UPDATE contrato SET sueldo_base = ? WHERE id_usuario = ?',
+                                [sueldoBase, idUsuario]
+                            );
+                            console.log(`✅ Sueldo actualizado para ID:${idUsuario} → ${sueldoBase}`);
+                        } else {
+                            console.log(`🟡 Sueldo ya estaba correcto para ID:${idUsuario}`);
+                        }
+                    } else {
+                        // 🆕 No existe contrato, lo creamos
+                        await executeQuery(
+                            'INSERT INTO contrato (id_usuario, sueldo_base) VALUES (?, ?)',
+                            [idUsuario, sueldoBase]
+                        );
+                        console.log(`✅ Nuevo contrato creado para ID:${idUsuario} → ${sueldoBase}`);
+                    }
+
+                } else {
+                    console.warn(`❌ Usuario con RUT ${rutBuscado} no encontrado en la base de datos`);
+                }
+
+            } catch (err) {
+                console.error(`❌ Error actualizando contrato para ${rut}:`, err.message);
             }
 
-            // ✅ Cálculo de horas extras
-            const factorBase = (28 / 30) / (horasLegales * 4);
-            const fhe = factorBase * 1.5;
-            const horasExtrasCalculadas = sueldoBase * fhe * horasExtrasNum;
 
-            // ✅ Sueldo bruto (SUMA, no concatenación)
-            const sueldoBruto = sueldoBase + gratificacion + horasExtrasCalculadas;
+            // ✅ FIN BLOQUE DE ACTUALIZACIÓN
 
-            console.log(`Cálculos para ${rut}:`, {
-                sueldoBase,
-                gratificacion,
-                horasExtrasCalculadas,
-                sueldoBruto
-            });
+            const sueldoBaseProrrateado = (sueldoBase / 30) * diasTrabajadosNum;
 
-            // ✅ Descuentos
-            const descuentoAFP = sueldoBruto * (tasaAFP / 100);
-            const descuentoSalud = sueldoBruto * (planSalud / 100);
-            const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
-            const baseTributable = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia;
-            const baseTributableUTM = baseTributable / valorUTM;
+            let gratificacionMensual = sueldoBase * 0.25;
+            const topeGratificacionMensual = (sueldoMinimo * 4.75) / 12;
+            if (gratificacionMensual > topeGratificacionMensual) {
+                gratificacionMensual = topeGratificacionMensual;
+            }
+            const sueldoBrutoMensualPactado = sueldoBase + gratificacionMensual;
 
-            console.log(`Descuentos para ${rut}:`, {
-                descuentoAFP,
-                descuentoSalud,
-                descuentoCesantia,
-                baseTributable,
-                baseTributableUTM
-            });
+            const baseTributableMensual = sueldoBrutoMensualPactado
+                - (sueldoBase * (tasaAFP / 100))
+                - (sueldoBase * (planSalud / 100))
+                - (sueldoBase * (tasaCesantia / 100));
 
-            // Buscar tramo IUSC
+            const baseTributableUTM = baseTributableMensual / valorUTM;
+
             let tramoIUSC = null;
             for (const tramo of tablaIUSC) {
                 const desdeUTM = parseFloat(tramo.desde_utm || 0);
@@ -854,26 +842,42 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 }
             }
 
-            // Calcular impuesto IUSC
             let impuestoIUSC = 0;
-            if (tramoIUSC && tramoIUSC.tasa !== null && tramoIUSC.tasa !== undefined) {
+            if (tramoIUSC?.tasa != null) {
                 const tasa = parseFloat(tramoIUSC.tasa || 0);
                 const rebajar = parseFloat(tramoIUSC.rebajar_utm || 0);
                 impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
                 impuestoIUSC = Math.max(0, impuestoIUSC);
             }
 
+            let gratificacion = sueldoBaseProrrateado * 0.25;
+            const topeGratificacion = (sueldoMinimo * 4.75) / 12;
+            if (gratificacion > topeGratificacion) {
+                gratificacion = topeGratificacion;
+            }
+
+            const factorBase = (28 / 30) / (horasLegales * 4);
+            const fhe = factorBase * 1.5;
+            const horasExtrasCalculadas = sueldoBase * fhe * horasExtrasNum;
+
+            const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas;
+
+            const descuentoAFP = sueldoBruto * (tasaAFP / 100);
+            const descuentoSalud = sueldoBruto * (planSalud / 100);
+            const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
             const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
+
             const totalDescuentos = leyesSociales + impuestoIUSC;
             const sueldoLiquido = sueldoBruto - totalDescuentos;
+            const baseTributable = sueldoBruto - leyesSociales;
 
-            // ✅ Verificar que no hay NaN antes de agregar resultado
             const resultado = {
                 rut,
-                nombre: nombre || 'Sin nombre', // ✅ Agregar nombre
-                sueldoBase: Math.round(sueldoBase * 100) / 100, // Redondear a 2 decimales
+                nombre: nombre || 'Sin nombre',
+                sueldoBase,
+                sueldoBaseProrrateado: Math.round(sueldoBaseProrrateado * 100) / 100,
                 sueldoBruto: Math.round(sueldoBruto * 100) / 100,
-                fhe: Math.round(fhe * 1000000) / 1000000, // 6 decimales para FHE
+                fhe: Math.round(fhe * 1000000) / 1000000,
                 gratificacion: Math.round(gratificacion * 100) / 100,
                 horasExtrasCalculadas: Math.round(horasExtrasCalculadas * 100) / 100,
                 descuentoAFP: Math.round(descuentoAFP * 100) / 100,
@@ -887,24 +891,8 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 totalDescuentos: Math.round(totalDescuentos * 100) / 100
             };
 
-            // ✅ Verificar que no hay NaN
-            const hasNaN = Object.values(resultado).some(val =>
-                typeof val === 'number' && isNaN(val)
-            );
-
-            if (hasNaN) {
-                console.error(`❌ NaN detectado en resultado para ${rut}:`, resultado);
-                errores.push({ rut, error: "Error en cálculos - valores inválidos" });
-                continue;
-            }
-
-            console.log(`✅ Resultado válido para ${rut}:`, resultado);
             resultados.push(resultado);
         }
-
-        console.log("=== RESUMEN FINAL ===");
-        console.log(`Procesados exitosamente: ${resultados.length}`);
-        console.log(`Errores: ${errores.length}`);
 
         return res.status(200).json({
             success: true,
@@ -915,11 +903,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
     } catch (err) {
         console.error('❌ ERROR GENERAL en calcularLiquidacionesMultiples:', err);
-        return res.status(500).json({
-            success: false,
-            message: 'Error interno del servidor',
-            error: err.message
-        });
+        return res.status(500).json({ success: false, message: 'Error interno del servidor', error: err.message });
     }
 };
 
