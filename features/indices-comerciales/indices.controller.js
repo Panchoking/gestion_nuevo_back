@@ -747,12 +747,12 @@ const calcularLiquidacionesMultiples = async (req, res) => {
         const errores = [];
 
         for (const trabajador of trabajadores) {
-            const { 
-                sueldoBase: sueldoBaseRaw, 
-                horasExtras = 0, 
-                diasTrabajados = 30, 
-                afp: afpId, 
-                rut, 
+            const {
+                sueldoBase: sueldoBaseRaw,
+                horasExtras = 0,
+                diasTrabajados = 30,
+                afp: afpId,
+                rut,
                 nombre,
                 userId // ← NUEVO CAMPO: ID del usuario
             } = trabajador;
@@ -782,14 +782,14 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             // BLOQUE DE ACTUALIZACIÓN DE SUELDO BASE - USANDO userId
             try {
                 console.log(`🔍 Actualizando sueldo para usuario ID: ${userId} (RUT: ${rut}, Nombre: ${nombre})`);
-                
+
                 const updateResult = await executeQuery(`
                     UPDATE contrato SET sueldo_base = ?
                     WHERE id_usuario = ?
                 `, [sueldoBase, userId]);
 
                 console.log(`✅ Sueldo actualizado a ${sueldoBase} para usuario ID: ${userId}. Filas afectadas: ${updateResult.affectedRows || 0}`);
-                
+
                 if (updateResult.affectedRows === 0) {
                     console.warn(`⚠️ No se encontró contrato para el usuario ID: ${userId}`);
                     // No agregamos a errores porque el cálculo puede continuar
@@ -865,7 +865,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             const resultado = {
                 rut,
                 nombre: nombre || 'Sin nombre',
-                userId, // Incluir el userId en la respuesta
+                userId,
                 sueldoBase,
                 sueldoBaseProrrateado: Math.round(sueldoBaseProrrateado * 100) / 100,
                 sueldoBruto: Math.round(sueldoBruto * 100) / 100,
@@ -880,9 +880,18 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 sueldoLiquido: Math.round(sueldoLiquido * 100) / 100,
                 baseTributable: Math.round(baseTributable * 100) / 100,
                 leyesSociales: Math.round(leyesSociales * 100) / 100,
-                totalDescuentos: Math.round(totalDescuentos * 100) / 100
-            };
+                totalDescuentos: Math.round(totalDescuentos * 100) / 100,
 
+                // ✅ AGREGAR INFORMACIÓN DE AFP:
+                afp: afpId,                    // ID de la AFP
+                afpNombre: afp.nombre,         // Nombre de la AFP  
+                afpTasa: afp.tasa,             // Tasa de la AFP
+
+                // ✅ OPCIONAL: Otros campos útiles para el PDF
+                diasTrabajados: diasTrabajadosNum,
+                horasExtras: horasExtrasNum,
+                cargo: trabajador.cargo || 'EMPLEADO'  // Si lo pasas desde el frontend
+            };
             resultados.push(resultado);
         }
 
