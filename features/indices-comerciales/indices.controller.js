@@ -548,7 +548,7 @@ const calcularSueldoBaseDesdeNeto = async (req, res) => {
 };
 const calcularLiquidacion = async (req, res) => {
     try {
-        const { sueldoBase, horasExtras, diasTrabajados, afp, montoAnticipo = 0, aceptarExcesoAnticipo = false } = req.body;
+        const { sueldoBase, horasExtras, diasTrabajados, afp, tipoContrato, montoAnticipo = 0, aceptarExcesoAnticipo = false } = req.body;
 
         if (!sueldoBase || isNaN(sueldoBase)) {
             return res.status(400).json({ success: false, message: 'Sueldo base inválido' });
@@ -590,7 +590,10 @@ const calcularLiquidacion = async (req, res) => {
         const horasExtrasCalculadas = sueldoBase * fhe * horasExtras;
 
         // 3️ Obtener tasa cesantía
-        const [afcData] = await executeQuery('SELECT fi_trabajador FROM afc WHERE id = 1');
+        const tipoContratoId = (tipoContrato === 2) ? 2 : 1;
+
+        // Consultar tasa de cesantía según tipo de contrato
+        const [afcData] = await executeQuery('SELECT fi_trabajador FROM afc WHERE id = ?', [tipoContratoId]);
         const tasaCesantia = parseFloat(afcData?.fi_trabajador) || 0;
 
         // 4 Obtener UTM
@@ -915,7 +918,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 // Controlador para calcular la cotización de la empresa (prorrateado correctamente)
 const calcularCotizacionEmpresa = async (req, res) => {
     try {
-        const { sueldoBase, horasExtras, afp, valorUF, montoExamenes, aguinaldoUF, costosVarios } = req.body;
+        const { sueldoBase, horasExtras, afp, valorUF, montoExamenes, aguinaldoUF, costosVarios ,tipoContrato} = req.body;
 
         // Validar y sumar costos varios
         let totalCostosVarios = 0;
@@ -943,10 +946,17 @@ const calcularCotizacionEmpresa = async (req, res) => {
         }
         const tasaSIS = parseFloat(afpData.sis);
 
-        // Obtener tasa AFC empleador
-        const [afcData] = await executeQuery('SELECT fi_empleador FROM afc WHERE id = 1');
-        const tasaAFC = parseFloat(afcData.fi_empleador);
+        // Determinar el ID de AFC según el tipo de contrato
+        const afcId = tipoContrato == 1 ? 1 : 2;
 
+        // Obtener la tasa AFC del empleador según corresponda
+        const [afcData] = await executeQuery('SELECT fi_empleador FROM afc WHERE id = ?', [afcId]);
+
+        if (!afcData) {
+            return res.status(400).json({ success: false, message: 'AFC no encontrada para el tipo de contrato' });
+        }
+
+        const tasaAFC = parseFloat(afcData.fi_empleador);
         // Obtener índices legales
         const indices = await executeQuery(`
             SELECT nombre, valor FROM indices_comerciales
