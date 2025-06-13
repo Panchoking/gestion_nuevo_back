@@ -706,6 +706,9 @@ const calcularLiquidacion = async (req, res) => {
 
 
 
+// SOLUCIÓN TEMPORAL: Buscar usuario por ID en lugar de RUT encriptado
+// Modifica tu función calcularLiquidacionesMultiples para usar el ID del usuario
+
 const calcularLiquidacionesMultiples = async (req, res) => {
     try {
         console.log("=== INICIO calcularLiquidacionesMultiples ===");
@@ -728,6 +731,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM' });
         }
 
+        // Cargar índices
         const getIndice = (nombre) => {
             const indice = indices.find(i => i.nombre === nombre);
             return parseFloat(indice?.valor || 0);
@@ -743,14 +747,28 @@ const calcularLiquidacionesMultiples = async (req, res) => {
         const errores = [];
 
         for (const trabajador of trabajadores) {
-            const { sueldoBase: sueldoBaseRaw, horasExtras = 0, diasTrabajados = 30, afp: afpId, rut, nombre } = trabajador;
+            const { 
+                sueldoBase: sueldoBaseRaw, 
+                horasExtras = 0, 
+                diasTrabajados = 30, 
+                afp: afpId, 
+                rut, 
+                nombre,
+                userId // ← NUEVO CAMPO: ID del usuario
+            } = trabajador;
 
             const sueldoBase = parseFloat(sueldoBaseRaw || 0);
             const horasExtrasNum = parseFloat(horasExtras || 0);
             const diasTrabajadosNum = parseInt(diasTrabajados || 30);
 
+            // Validaciones
             if (!sueldoBase || isNaN(sueldoBase) || sueldoBase <= 0) {
                 errores.push({ rut, error: "Sueldo base inválido" });
+                continue;
+            }
+
+            if (!userId) {
+                errores.push({ rut, error: "ID de usuario requerido" });
                 continue;
             }
 
@@ -761,63 +779,31 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             }
             const tasaAFP = parseFloat(afp.tasa || 0);
 
-            // ✅ INICIO BLOQUE DE ACTUALIZACIÓN CON OPTIMIZACIÓN
+            // BLOQUE DE ACTUALIZACIÓN DE SUELDO BASE - USANDO userId
             try {
-                // 🔧 NO limpiar rut → lo buscamos tal cual lo tenemos almacenado
-                const rutBuscado = rut.trim().toUpperCase();
+                console.log(`🔍 Actualizando sueldo para usuario ID: ${userId} (RUT: ${rut}, Nombre: ${nombre})`);
+                
+                const updateResult = await executeQuery(`
+                    UPDATE contrato SET sueldo_base = ?
+                    WHERE id_usuario = ?
+                `, [sueldoBase, userId]);
 
-                // 🔎 Buscamos el id_usuario en la BD usando el rut formateado que ya guardas
-                const usuario = await executeQuery(`
-                    SELECT u.id 
-                    FROM usuario u
-                    INNER JOIN datos_personales dp ON u.id = dp.id_usuario
-                    WHERE dp.rut = ?
-                `, [rutBuscado]);
-
-                if (usuario.length > 0) {
-                    const idUsuario = usuario[0].id;
-
-                    // 🔎 Buscamos si ya existe contrato
-                    const contrato = await executeQuery(
-                        'SELECT sueldo_base FROM contrato WHERE id_usuario = ?',
-                        [idUsuario]
-                    );
-
-                    if (contrato.length > 0) {
-                        const sueldoActualBD = parseFloat(contrato[0].sueldo_base);
-                        console.log(`🟢 Comparando sueldos ID:${idUsuario} | Actual: ${sueldoActualBD} | Nuevo: ${sueldoBase}`);
-
-                        if (sueldoActualBD !== sueldoBase) {
-                            await executeQuery(
-                                'UPDATE contrato SET sueldo_base = ? WHERE id_usuario = ?',
-                                [sueldoBase, idUsuario]
-                            );
-                            console.log(`✅ Sueldo actualizado para ID:${idUsuario} → ${sueldoBase}`);
-                        } else {
-                            console.log(`🟡 Sueldo ya estaba correcto para ID:${idUsuario}`);
-                        }
-                    } else {
-                        // 🆕 No existe contrato, lo creamos
-                        await executeQuery(
-                            'INSERT INTO contrato (id_usuario, sueldo_base) VALUES (?, ?)',
-                            [idUsuario, sueldoBase]
-                        );
-                        console.log(`✅ Nuevo contrato creado para ID:${idUsuario} → ${sueldoBase}`);
-                    }
-
-                } else {
-                    console.warn(`❌ Usuario con RUT ${rutBuscado} no encontrado en la base de datos`);
+                console.log(`✅ Sueldo actualizado a ${sueldoBase} para usuario ID: ${userId}. Filas afectadas: ${updateResult.affectedRows || 0}`);
+                
+                if (updateResult.affectedRows === 0) {
+                    console.warn(`⚠️ No se encontró contrato para el usuario ID: ${userId}`);
+                    // No agregamos a errores porque el cálculo puede continuar
                 }
 
             } catch (err) {
-                console.error(`❌ Error actualizando contrato para ${rut}:`, err.message);
+                console.error(`❌ Error en actualización sueldo para usuario ID ${userId}:`, err.message);
+                // No detenemos el proceso por errores de actualización
             }
 
-
-            // ✅ FIN BLOQUE DE ACTUALIZACIÓN
-
+            // 1️⃣ Prorrateo del sueldo base
             const sueldoBaseProrrateado = (sueldoBase / 30) * diasTrabajadosNum;
 
+            // 2️⃣ Gratificación mensual (para tramo IUSC)
             let gratificacionMensual = sueldoBase * 0.25;
             const topeGratificacionMensual = (sueldoMinimo * 4.75) / 12;
             if (gratificacionMensual > topeGratificacionMensual) {
@@ -825,6 +811,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             }
             const sueldoBrutoMensualPactado = sueldoBase + gratificacionMensual;
 
+            // 3️⃣ Tramo IUSC
             const baseTributableMensual = sueldoBrutoMensualPactado
                 - (sueldoBase * (tasaAFP / 100))
                 - (sueldoBase * (planSalud / 100))
@@ -850,18 +837,22 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 impuestoIUSC = Math.max(0, impuestoIUSC);
             }
 
+            // 4️⃣ Gratificación prorrateada (devengado real)
             let gratificacion = sueldoBaseProrrateado * 0.25;
             const topeGratificacion = (sueldoMinimo * 4.75) / 12;
             if (gratificacion > topeGratificacion) {
                 gratificacion = topeGratificacion;
             }
 
+            // 5️⃣ Horas extras
             const factorBase = (28 / 30) / (horasLegales * 4);
             const fhe = factorBase * 1.5;
             const horasExtrasCalculadas = sueldoBase * fhe * horasExtrasNum;
 
+            // 6️⃣ Sueldo bruto real
             const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas;
 
+            // 7️⃣ Descuentos
             const descuentoAFP = sueldoBruto * (tasaAFP / 100);
             const descuentoSalud = sueldoBruto * (planSalud / 100);
             const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
@@ -874,6 +865,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             const resultado = {
                 rut,
                 nombre: nombre || 'Sin nombre',
+                userId, // Incluir el userId en la respuesta
                 sueldoBase,
                 sueldoBaseProrrateado: Math.round(sueldoBaseProrrateado * 100) / 100,
                 sueldoBruto: Math.round(sueldoBruto * 100) / 100,
@@ -894,6 +886,8 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             resultados.push(resultado);
         }
 
+        console.log(`=== FIN calcularLiquidacionesMultiples - Procesados: ${resultados.length}, Errores: ${errores.length} ===`);
+
         return res.status(200).json({
             success: true,
             message: 'Cálculo completado',
@@ -906,8 +900,6 @@ const calcularLiquidacionesMultiples = async (req, res) => {
         return res.status(500).json({ success: false, message: 'Error interno del servidor', error: err.message });
     }
 };
-
-
 //calculo cotizaciones 
 
 

@@ -655,6 +655,7 @@ const getAllNombreRutContrato = async (req, res) => {
     try {
         const query = `
             SELECT 
+                u.id AS userId,  
                 dp.nombre AS dp_nombre,
                 dp.rut AS dp_rut,
                 tc.nombre AS tipo_contrato,
@@ -689,7 +690,6 @@ const getAllNombreRutContrato = async (req, res) => {
         });
     }
 };
-
 
 
 export {
