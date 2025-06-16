@@ -125,6 +125,86 @@ const getTramosIUSC = async (req, res) => {
     }
 };
 
+// ENDPOINT PARA ACTUALIZAR IUSC
+const updateIUSCByTramo = async (req, res) => {
+    const { tramo } = req.params;
+    const { desde_utm, hasta_utm, tasa, rebajar_utm, tasa_maxima } = req.body;
+    
+    try {
+        // Verificar si el tramo existe
+        const [existingTramo] = await executeQuery(`
+            SELECT * FROM valores_iusc WHERE tramo = ? LIMIT 1
+        `, [tramo]);
+
+        if (!existingTramo) {
+            return res.status(404).json({
+                success: false,
+                message: `Tramo IUSC ${tramo} no encontrado`
+            });
+        }
+
+        // Preparar campos a actualizar
+        const updates = [];
+        const values = [];
+        
+        if (desde_utm !== undefined) {
+            updates.push('desde_utm = ?');
+            values.push(desde_utm);
+        }
+        
+        if (hasta_utm !== undefined) {
+            updates.push('hasta_utm = ?');
+            values.push(hasta_utm);
+        }
+        
+        if (tasa !== undefined) {
+            updates.push('tasa = ?');
+            values.push(tasa);
+        }
+        
+        if (rebajar_utm !== undefined) {
+            updates.push('rebajar_utm = ?');
+            values.push(rebajar_utm);
+        }
+        
+        if (tasa_maxima !== undefined) {
+            updates.push('tasa_maxima = ?');
+            values.push(tasa_maxima);
+        }
+        
+        if (updates.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No se proporcionaron campos para actualizar'
+            });
+        }
+        
+        values.push(tramo);
+        
+        await executeQuery(`
+            UPDATE valores_iusc SET ${updates.join(', ')} WHERE tramo = ?
+        `, values);
+        
+        return res.status(200).json({
+            success: true,
+            message: `Tramo IUSC ${tramo} actualizado correctamente`,
+            result: { tramo, desde_utm, hasta_utm, tasa, rebajar_utm, tasa_maxima }
+        });
+    } catch (err) {
+        console.error(`Error actualizando tramo IUSC ${tramo}:`, err);
+        return res.status(500).json({
+            success: false,
+            message: `Error actualizando tramo IUSC`,
+            error: err.message
+        });
+    }
+};
+
+
+
+
+
+
 const getAFC = async (req, res) => {
     try {
         const afcData = await executeQuery('SELECT * FROM afc ORDER BY id');
@@ -138,6 +218,67 @@ const getAFC = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Error obteniendo datos de AFC',
+            error: err.message
+        });
+    }
+};
+
+
+
+const updateAFCById = async (req, res) => {
+    const { id } = req.params;
+    const { fi_empleador, fi_trabajador } = req.body;
+    
+    try {
+        // Verificar si el AFC existe
+        const [existingAFC] = await executeQuery(`
+            SELECT * FROM afc WHERE id = ? LIMIT 1
+        `, [id]);
+
+        if (!existingAFC) {
+            return res.status(404).json({
+                success: false,
+                message: `AFC con ID ${id} no encontrado`
+            });
+        }
+
+        // Preparar campos a actualizar
+        const updates = [];
+        const values = [];
+        
+        if (fi_empleador !== undefined) {
+            updates.push('fi_empleador = ?');
+            values.push(fi_empleador);
+        }
+        
+        if (fi_trabajador !== undefined) {
+            updates.push('fi_trabajador = ?');
+            values.push(fi_trabajador);
+        }
+        
+        if (updates.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No se proporcionaron campos para actualizar'
+            });
+        }
+        
+        values.push(id);
+        
+        await executeQuery(`
+            UPDATE afc SET ${updates.join(', ')} WHERE id = ?
+        `, values);
+        
+        return res.status(200).json({
+            success: true,
+            message: `AFC actualizado correctamente`,
+            result: { id, fi_empleador, fi_trabajador }
+        });
+    } catch (err) {
+        console.error(`Error actualizando AFC ${id}:`, err);
+        return res.status(500).json({
+            success: false,
+            message: `Error actualizando AFC`,
             error: err.message
         });
     }
@@ -210,7 +351,10 @@ const getUFByDate = async (req, res) => {
     }
 };
 
-// CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES
+
+
+
+// CONSEGUIR UTM DEL MES - CORREGIDO PARA BUSCAR POR MES 
 const getUTM = async (req, res) => {
     try {
         const utmData = await cmfClient.getCurrentUTM();
@@ -374,6 +518,66 @@ const getAFP = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Error obteniendo datos de AFP',
+            error: err.message
+        });
+    }
+};
+
+// ENDPOINT PARA ACTUALIZAR AFP
+const updateAFPById = async (req, res) => {
+    const { id } = req.params;
+    const { tasa, sis } = req.body;
+
+    try {
+        // Verificar si el AFP existe
+        const [existingAFP] = await executeQuery(`
+            SELECT * FROM afp WHERE id = ? LIMIT 1
+        `, [id]);
+
+        if (!existingAFP) {
+            return res.status(404).json({
+                success: false,
+                message: `AFP con ID ${id} no encontrada`
+            });
+        }
+
+        // Preparar campos a actualizar
+        const updates = [];
+        const values = [];
+
+        if (tasa !== undefined) {
+            updates.push('tasa = ?');
+            values.push(tasa);
+        }
+
+        if (sis !== undefined) {
+            updates.push('sis = ?');
+            values.push(sis);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No se proporcionaron campos para actualizar'
+            });
+        }
+
+        values.push(id);
+
+        await executeQuery(`
+            UPDATE afp SET ${updates.join(', ')} WHERE id = ?
+        `, values);
+
+        return res.status(200).json({
+            success: true,
+            message: `AFP actualizada correctamente`,
+            result: { id, tasa, sis }
+        });
+    } catch (err) {
+        console.error(`Error actualizando AFP ${id}:`, err);
+        return res.status(500).json({
+            success: false,
+            message: `Error actualizando AFP`,
             error: err.message
         });
     }
@@ -918,7 +1122,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 // Controlador para calcular la cotización de la empresa (prorrateado correctamente)
 const calcularCotizacionEmpresa = async (req, res) => {
     try {
-        const { sueldoBase, horasExtras, afp, valorUF, montoExamenes, aguinaldoUF, costosVarios ,tipoContrato} = req.body;
+        const { sueldoBase, horasExtras, afp, valorUF, montoExamenes, aguinaldoUF, costosVarios, tipoContrato } = req.body;
 
         // Validar y sumar costos varios
         let totalCostosVarios = 0;
@@ -1174,6 +1378,10 @@ export {
     calcularLiquidacionesMultiples,
     calcularCotizacionEmpresa,
     crearPrestamoInterno,
-    getPrestamos
+    getPrestamos,
+    // Nuevas funciones
+    updateAFPById,
+    updateIUSCByTramo,
+    updateAFCById
 
 };
