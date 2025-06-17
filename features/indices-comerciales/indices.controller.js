@@ -952,6 +952,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
         const resultados = [];
         const errores = [];
+        const advertencias = []; 
 
         for (const trabajador of trabajadores) {
             const {
@@ -962,32 +963,34 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 rut,
                 nombre,
                 userId,
-                prestamo = 0
+                prestamo = 0,
+                anticipo = 0
             } = trabajador;
 
             const sueldoBase = parseFloat(sueldoBaseRaw || 0);
             const horasExtrasNum = parseFloat(horasExtras || 0);
             const diasTrabajadosNum = parseInt(diasTrabajados || 30);
+            const anticipoNum = parseFloat(anticipo || 0);
 
             // Validaciones
             if (!sueldoBase || isNaN(sueldoBase) || sueldoBase <= 0) {
-                errores.push({ rut, error: "Sueldo base inválido" });
+                errores.push({ rut, nombre, error: "Sueldo base inválido" });
                 continue;
             }
 
             if (!userId) {
-                errores.push({ rut, error: "ID de usuario requerido" });
+                errores.push({ rut, nombre, error: "ID de usuario requerido" });
                 continue;
             }
 
             const afp = afps.find(a => a.id == afpId);
             if (!afp) {
-                errores.push({ rut, error: `AFP no válida o no encontrada (ID: ${afpId})` });
+                errores.push({ rut, nombre, error: `AFP no válida o no encontrada (ID: ${afpId})` });
                 continue;
             }
             const tasaAFP = parseFloat(afp.tasa || 0);
 
-            // BLOQUE DE ACTUALIZACIÓN DE SUELDO BASE - USANDO userId
+            // BLOQUE DE ACTUALIZACIÓN DE SUELDO BASE
             try {
                 console.log(`🔍 Actualizando sueldo para usuario ID: ${userId} (RUT: ${rut}, Nombre: ${nombre})`);
 
@@ -1000,32 +1003,28 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
                 if (updateResult.affectedRows === 0) {
                     console.warn(`⚠️ No se encontró contrato para el usuario ID: ${userId}`);
-                    // No agregamos a errores porque el cálculo puede continuar
                 }
 
             } catch (err) {
                 console.error(`❌ Error en actualización sueldo para usuario ID ${userId}:`, err.message);
-                // No detenemos el proceso por errores de actualización
             }
 
+            // Obtener préstamos existentes
             const prestamos = await executeQuery(`
-                    SELECT monto_total FROM prestamos_contrato WHERE id_contrato = ?
-                `, [userId]);
+                SELECT monto_total FROM prestamos_contrato WHERE id_contrato = ?
+            `, [userId]);
 
-            // Sumar todos los montos de los préstamos
             const totalPrestamos = prestamos.reduce((sum, prestamo) => sum + parseFloat(prestamo.monto_total), 0);
-
 
             // BLOQUE DE ACTUALIZACIÓN DEL PRÉSTAMO
             if (prestamo > 0) {
                 try {
                     console.log(`Procesando préstamo para usuario ID: ${userId}`);
 
-                    // Llamar a la función de crear préstamo en lugar de INSERT directo
                     await executeQuery(`
-                    INSERT INTO prestamos_contrato (id_contrato, nombre_prestamo, monto_total)
-                    VALUES (?, ?, ?)
-                `, [userId, `Préstamo Liquidación ${new Date().toLocaleDateString()}`, prestamo]);
+                        INSERT INTO prestamos_contrato (id_contrato, nombre_prestamo, monto_total)
+                        VALUES (?, ?, ?)
+                    `, [userId, `Préstamo Liquidación ${new Date().toLocaleDateString()}`, prestamo]);
 
                     console.log(`Préstamo creado correctamente para usuario ID: ${userId}`);
                 } catch (err) {
@@ -1033,8 +1032,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 }
             }
 
-
-
+            // CÁLCULOS DE LIQUIDACIÓN
             // 1️⃣ Prorrateo del sueldo base
             const sueldoBaseProrrateado = (sueldoBase / 30) * diasTrabajadosNum;
 
@@ -1089,14 +1087,47 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
             // 7️⃣ Descuentos
             const descuentoAFP = sueldoBruto * (tasaAFP / 100);
+            console.log("Descuento AFP:", descuentoAFP);
             const descuentoSalud = sueldoBruto * (planSalud / 100);
+            console.log("Descuento Salud:", descuentoSalud);
             const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
+            console.log("Descuento Cesantía:", descuentoCesantia);
             const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
+            console.log("Leyes Sociales:", leyesSociales);
             const descuentoPrestamo = totalPrestamos;
+            console.log("Descuento Préstamo:", descuentoPrestamo);      
+            
+            // ✅ AGREGAR: Descuento por anticipo
+            const descuentoAnticipo = anticipoNum;
 
-            const totalDescuentos = leyesSociales + impuestoIUSC + descuentoPrestamo;
+            // ✅ CORREGIR: Incluir anticipo en total de descuentos
+            const totalDescuentos = leyesSociales + impuestoIUSC + descuentoPrestamo + descuentoAnticipo;
+            console.log("Total Descuentos:", totalDescuentos);
             const sueldoLiquido = sueldoBruto - totalDescuentos;
+            console.log("Sueldo Líquido:", sueldoLiquido);
             const baseTributable = sueldoBruto - leyesSociales;
+
+            // ✅ Validaciones de anticipo (como advertencias, no errores)
+            const porcentajeAnticipo = anticipoNum > 0 ? (anticipoNum / sueldoBase) * 100 : 0;
+            console.log("Porcentaje Anticipo:", porcentajeAnticipo);
+
+            if (porcentajeAnticipo > 25) {
+                advertencias.push({
+                    rut,
+                    nombre,
+                    mensaje: `El anticipo (${porcentajeAnticipo.toFixed(2)}%) excede el 25% permitido. Requiere autorización especial.`,
+                    tipo: 'anticipo_excesivo'
+                });
+            }
+
+            if (porcentajeAnticipo > 0 && porcentajeAnticipo < 15) {
+                advertencias.push({
+                    rut,
+                    nombre,
+                    mensaje: `El anticipo (${porcentajeAnticipo.toFixed(2)}%) está por debajo del mínimo sugerido (15%).`,
+                    tipo: 'anticipo_bajo'
+                });
+            }
 
             const resultado = {
                 rut,
@@ -1118,28 +1149,33 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 leyesSociales: Math.round(leyesSociales * 100) / 100,
                 totalDescuentos: Math.round(totalDescuentos * 100) / 100,
                 prestamo: Math.round(descuentoPrestamo * 100) / 100,
+                
+                // ✅ AGREGAR: Información del anticipo
+                anticipo: Math.round(descuentoAnticipo * 100) / 100,
+                porcentajeAnticipo: Math.round(porcentajeAnticipo * 100) / 100,
 
+                // Información de AFP
+                afp: afpId,
+                afpNombre: afp.nombre,
+                afpTasa: afp.tasa,
 
-                // ✅ AGREGAR INFORMACIÓN DE AFP:
-                afp: afpId,                    // ID de la AFP
-                afpNombre: afp.nombre,         // Nombre de la AFP  
-                afpTasa: afp.tasa,             // Tasa de la AFP
-
-                // ✅ OPCIONAL: Otros campos útiles para el PDF
+                // Otros campos
                 diasTrabajados: diasTrabajadosNum,
                 horasExtras: horasExtrasNum,
-                cargo: trabajador.cargo || 'EMPLEADO'  // Si lo pasas desde el frontend
+                cargo: trabajador.cargo || 'EMPLEADO'
             };
+            
             resultados.push(resultado);
         }
 
-        console.log(`=== FIN calcularLiquidacionesMultiples - Procesados: ${resultados.length}, Errores: ${errores.length} ===`);
+        console.log(`=== FIN calcularLiquidacionesMultiples - Procesados: ${resultados.length}, Errores: ${errores.length}, Advertencias: ${advertencias.length} ===`);
 
         return res.status(200).json({
             success: true,
             message: 'Cálculo completado',
             result: resultados,
-            errores
+            errores,
+            advertencias
         });
 
     } catch (err) {
