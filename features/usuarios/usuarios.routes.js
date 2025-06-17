@@ -14,7 +14,9 @@ import {
     updatePassword,
     getUsers,
     getCount,
-    getAllNombreRutContrato
+    getAllNombreRutContrato,
+    crearPrestamoContrato,
+    eliminarPrestamo   
 } from './usuarios.controller.js';
 
 // middlewares
@@ -69,5 +71,10 @@ router.get('/perfil', authenticateToken, getPerfil);
 router.put('/cambiar-password', authenticateToken, updatePassword);
 
 router.get('/nombres-rut-contrato', authenticateToken, getAllNombreRutContrato);
+
+//prestamos
+// En las rutas
+router.post('/prestamos', crearPrestamoContrato);
+router.delete('/prestamos/:id', eliminarPrestamo);
 
 export default router;

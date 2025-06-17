@@ -650,7 +650,6 @@ const updateEstadoColaborador = async (req, res) => {
 };
 
 
-
 const getAllNombreRutContrato = async (req, res) => {
     try {
         const query = `
@@ -662,6 +661,7 @@ const getAllNombreRutContrato = async (req, res) => {
                 CAST(c.sueldo_base AS DECIMAL(15,2)) AS sueldo_base,
                 c.cargo AS c_cargo,
                 c.codigo AS c_codigo,
+                c.id AS contrato_id,  
                 CAST(c.id_afp AS UNSIGNED) AS id_afp,
                 afp.nombre AS afp_nombre,
                 CAST(c.anticipo AS DECIMAL(10,2)) AS anticipo,
@@ -674,13 +674,24 @@ const getAllNombreRutContrato = async (req, res) => {
             WHERE u.is_admin = FALSE AND u.is_dummy = FALSE
         `;
 
-        const result = await executeQuery(query);
+        const colaboradores = await executeQuery(query);
+
+        for (let colaborador of colaboradores) {
+            const prestamos = await executeQuery(`
+                SELECT id, nombre_prestamo, monto_total
+                FROM prestamos_contrato
+                WHERE id_contrato = ?
+            `, [colaborador.contrato_id]); // ✅ Usar contrato_id en lugar de userId
+
+            colaborador.prestamos = prestamos;
+        }
 
         res.status(200).json({
             success: true,
             message: "Datos de todos los usuarios obtenidos correctamente",
-            result
+            result: colaboradores
         });
+
     } catch (error) {
         console.error('Error al obtener datos de usuarios:', error.message);
         res.status(500).json({
@@ -690,6 +701,72 @@ const getAllNombreRutContrato = async (req, res) => {
         });
     }
 };
+
+const crearPrestamoContrato = async (req, res) => {
+    try {
+        const { id_contrato, nombre_prestamo, monto_total } = req.body;
+
+        if (!id_contrato || !nombre_prestamo || !monto_total) {
+            return res.status(400).json({
+                success: false,
+                message: 'Todos los campos son obligatorios'
+            });
+        }
+
+        const monto = parseFloat(monto_total);
+        if (isNaN(monto) || monto <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'El monto debe ser un número válido mayor a 0'
+            });
+        }
+
+        await executeQuery(`
+            INSERT INTO prestamos_contrato (id_contrato, nombre_prestamo, monto_total)
+            VALUES (?, ?, ?)
+        `, [id_contrato, nombre_prestamo, monto]);
+
+        res.status(201).json({
+            success: true,
+            message: 'Préstamo creado correctamente'
+        });
+
+    } catch (error) {
+        console.error('Error creando préstamo:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Error del servidor'
+        });
+    }
+};
+
+const eliminarPrestamo = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await executeQuery('DELETE FROM prestamos_contrato WHERE id = ?', [id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Préstamo no encontrado'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Préstamo eliminado correctamente'
+        });
+
+    } catch (error) {
+        console.error('Error eliminando préstamo:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Error del servidor'
+        });
+    }
+};
+
 
 
 export {
@@ -705,5 +782,7 @@ export {
     getSupervisores,
     getPerfil,
     updatePassword,
-    getAllNombreRutContrato
+    getAllNombreRutContrato,
+    crearPrestamoContrato,     // ✅ Nueva
+    eliminarPrestamo           // ✅ Nueva
 }

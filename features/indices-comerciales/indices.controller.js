@@ -129,7 +129,7 @@ const getTramosIUSC = async (req, res) => {
 const updateIUSCByTramo = async (req, res) => {
     const { tramo } = req.params;
     const { desde_utm, hasta_utm, tasa, rebajar_utm, tasa_maxima } = req.body;
-    
+
     try {
         // Verificar si el tramo existe
         const [existingTramo] = await executeQuery(`
@@ -146,45 +146,45 @@ const updateIUSCByTramo = async (req, res) => {
         // Preparar campos a actualizar
         const updates = [];
         const values = [];
-        
+
         if (desde_utm !== undefined) {
             updates.push('desde_utm = ?');
             values.push(desde_utm);
         }
-        
+
         if (hasta_utm !== undefined) {
             updates.push('hasta_utm = ?');
             values.push(hasta_utm);
         }
-        
+
         if (tasa !== undefined) {
             updates.push('tasa = ?');
             values.push(tasa);
         }
-        
+
         if (rebajar_utm !== undefined) {
             updates.push('rebajar_utm = ?');
             values.push(rebajar_utm);
         }
-        
+
         if (tasa_maxima !== undefined) {
             updates.push('tasa_maxima = ?');
             values.push(tasa_maxima);
         }
-        
+
         if (updates.length === 0) {
             return res.status(400).json({
                 success: false,
                 message: 'No se proporcionaron campos para actualizar'
             });
         }
-        
+
         values.push(tramo);
-        
+
         await executeQuery(`
             UPDATE valores_iusc SET ${updates.join(', ')} WHERE tramo = ?
         `, values);
-        
+
         return res.status(200).json({
             success: true,
             message: `Tramo IUSC ${tramo} actualizado correctamente`,
@@ -228,7 +228,7 @@ const getAFC = async (req, res) => {
 const updateAFCById = async (req, res) => {
     const { id } = req.params;
     const { fi_empleador, fi_trabajador } = req.body;
-    
+
     try {
         // Verificar si el AFC existe
         const [existingAFC] = await executeQuery(`
@@ -245,30 +245,30 @@ const updateAFCById = async (req, res) => {
         // Preparar campos a actualizar
         const updates = [];
         const values = [];
-        
+
         if (fi_empleador !== undefined) {
             updates.push('fi_empleador = ?');
             values.push(fi_empleador);
         }
-        
+
         if (fi_trabajador !== undefined) {
             updates.push('fi_trabajador = ?');
             values.push(fi_trabajador);
         }
-        
+
         if (updates.length === 0) {
             return res.status(400).json({
                 success: false,
                 message: 'No se proporcionaron campos para actualizar'
             });
         }
-        
+
         values.push(id);
-        
+
         await executeQuery(`
             UPDATE afc SET ${updates.join(', ')} WHERE id = ?
         `, values);
-        
+
         return res.status(200).json({
             success: true,
             message: `AFC actualizado correctamente`,
@@ -961,7 +961,8 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 afp: afpId,
                 rut,
                 nombre,
-                userId // ← NUEVO CAMPO: ID del usuario
+                userId,
+                prestamo = 0
             } = trabajador;
 
             const sueldoBase = parseFloat(sueldoBaseRaw || 0);
@@ -1006,6 +1007,33 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 console.error(`❌ Error en actualización sueldo para usuario ID ${userId}:`, err.message);
                 // No detenemos el proceso por errores de actualización
             }
+
+            const prestamos = await executeQuery(`
+                    SELECT monto_total FROM prestamos_contrato WHERE id_contrato = ?
+                `, [userId]);
+
+            // Sumar todos los montos de los préstamos
+            const totalPrestamos = prestamos.reduce((sum, prestamo) => sum + parseFloat(prestamo.monto_total), 0);
+
+
+            // BLOQUE DE ACTUALIZACIÓN DEL PRÉSTAMO
+            if (prestamo > 0) {
+                try {
+                    console.log(`Procesando préstamo para usuario ID: ${userId}`);
+
+                    // Llamar a la función de crear préstamo en lugar de INSERT directo
+                    await executeQuery(`
+                    INSERT INTO prestamos_contrato (id_contrato, nombre_prestamo, monto_total)
+                    VALUES (?, ?, ?)
+                `, [userId, `Préstamo Liquidación ${new Date().toLocaleDateString()}`, prestamo]);
+
+                    console.log(`Préstamo creado correctamente para usuario ID: ${userId}`);
+                } catch (err) {
+                    console.error(`Error creando préstamo para usuario ID ${userId}:`, err.message);
+                }
+            }
+
+
 
             // 1️⃣ Prorrateo del sueldo base
             const sueldoBaseProrrateado = (sueldoBase / 30) * diasTrabajadosNum;
@@ -1064,8 +1092,9 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             const descuentoSalud = sueldoBruto * (planSalud / 100);
             const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
             const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
+            const descuentoPrestamo = totalPrestamos;
 
-            const totalDescuentos = leyesSociales + impuestoIUSC;
+            const totalDescuentos = leyesSociales + impuestoIUSC + descuentoPrestamo;
             const sueldoLiquido = sueldoBruto - totalDescuentos;
             const baseTributable = sueldoBruto - leyesSociales;
 
@@ -1088,6 +1117,8 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 baseTributable: Math.round(baseTributable * 100) / 100,
                 leyesSociales: Math.round(leyesSociales * 100) / 100,
                 totalDescuentos: Math.round(totalDescuentos * 100) / 100,
+                prestamo: Math.round(descuentoPrestamo * 100) / 100,
+
 
                 // ✅ AGREGAR INFORMACIÓN DE AFP:
                 afp: afpId,                    // ID de la AFP
