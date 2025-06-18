@@ -919,7 +919,7 @@ const calcularLiquidacion = async (req, res) => {
 const calcularLiquidacionesMultiples = async (req, res) => {
     try {
         console.log("=== INICIO calcularLiquidacionesMultiples ===");
-        const { trabajadores } = req.body;
+        const { trabajadores, valorUF } = req.body;
 
         if (!Array.isArray(trabajadores) || trabajadores.length === 0) {
             return res.status(400).json({ success: false, message: 'Debe proporcionar una lista de trabajadores válida' });
@@ -938,6 +938,9 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM' });
         }
 
+        if (!valorUF || isNaN(valorUF)) {
+            return res.status(400).json({ success: false, message: 'Debe proporcionar el valor de la UF' });
+        }
         // Cargar índices
         const getIndice = (nombre) => {
             const indice = indices.find(i => i.nombre === nombre);
@@ -952,7 +955,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
         const resultados = [];
         const errores = [];
-        const advertencias = []; 
+        const advertencias = [];
 
         for (const trabajador of trabajadores) {
             const {
@@ -964,7 +967,8 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 nombre,
                 userId,
                 prestamo = 0,
-                anticipo = 0
+                anticipo = 0,
+                aguinaldoUF = 0  // ✅ NUEVO: Aguinaldo opcional en UF
             } = trabajador;
 
             const sueldoBase = parseFloat(sueldoBaseRaw || 0);
@@ -989,6 +993,33 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 continue;
             }
             const tasaAFP = parseFloat(afp.tasa || 0);
+
+            // ✅ NUEVO: Cálculo del aguinaldo
+            const aguinaldoUFNum = parseFloat(aguinaldoUF || 0);
+            let aguinaldoCLP = 0;
+            let aguinaldoUFValido = 0;
+
+            // Validar rango de aguinaldo (3-5 UF típicamente)
+            if (aguinaldoUFNum >= 3 && aguinaldoUFNum <= 5 && valorUF > 0) {
+                aguinaldoUFValido = aguinaldoUFNum;
+                aguinaldoCLP = aguinaldoUFValido * valorUF;
+            } else if (aguinaldoUFNum > 0) {
+                // Si está fuera del rango, agregar advertencia
+                advertencias.push({
+                    rut,
+                    nombre,
+                    mensaje: `El aguinaldo de ${aguinaldoUFNum} UF está fuera del rango típico (3-5 UF).`,
+                    tipo: 'aguinaldo_atipico'
+                });
+                
+            }
+
+            console.log("logs aguinaldo:");
+            console.log("uf", valorUF);
+            console.log("aguinaldoufNum : ", aguinaldoUFNum);
+            console.log("aguinaldoCLP : ", aguinaldoCLP);
+            
+            
 
             // BLOQUE DE ACTUALIZACIÓN DE SUELDO BASE
             try {
@@ -1082,8 +1113,10 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             const fhe = factorBase * 1.5;
             const horasExtrasCalculadas = sueldoBase * fhe * horasExtrasNum;
 
-            // 6️⃣ Sueldo bruto real
-            const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas;
+            // 6️⃣ Sueldo bruto real - ✅ MODIFICADO: Incluir aguinaldo completo
+            const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas + aguinaldoCLP;
+
+            
 
             // 7️⃣ Descuentos
             const descuentoAFP = sueldoBruto * (tasaAFP / 100);
@@ -1095,19 +1128,20 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
             console.log("Leyes Sociales:", leyesSociales);
             const descuentoPrestamo = totalPrestamos;
-            console.log("Descuento Préstamo:", descuentoPrestamo);      
-            
-            // ✅ AGREGAR: Descuento por anticipo
+            console.log("Descuento Préstamo:", descuentoPrestamo);
+
+
+            // Descuento por anticipo
             const descuentoAnticipo = anticipoNum;
 
-            // ✅ CORREGIR: Incluir anticipo en total de descuentos
+            // Total de descuentos
             const totalDescuentos = leyesSociales + impuestoIUSC + descuentoPrestamo + descuentoAnticipo;
             console.log("Total Descuentos:", totalDescuentos);
             const sueldoLiquido = sueldoBruto - totalDescuentos;
             console.log("Sueldo Líquido:", sueldoLiquido);
             const baseTributable = sueldoBruto - leyesSociales;
 
-            // ✅ Validaciones de anticipo (como advertencias, no errores)
+            // Validaciones de anticipo (como advertencias, no errores)
             const porcentajeAnticipo = anticipoNum > 0 ? (anticipoNum / sueldoBase) * 100 : 0;
             console.log("Porcentaje Anticipo:", porcentajeAnticipo);
 
@@ -1149,10 +1183,14 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 leyesSociales: Math.round(leyesSociales * 100) / 100,
                 totalDescuentos: Math.round(totalDescuentos * 100) / 100,
                 prestamo: Math.round(descuentoPrestamo * 100) / 100,
-                
-                // ✅ AGREGAR: Información del anticipo
+
+                // Información del anticipo
                 anticipo: Math.round(descuentoAnticipo * 100) / 100,
                 porcentajeAnticipo: Math.round(porcentajeAnticipo * 100) / 100,
+
+                // ✅ NUEVO: Información del aguinaldo
+                aguinaldoUF: aguinaldoUFValido,
+                aguinaldoCLP: Math.round(aguinaldoCLP * 100) / 100,
 
                 // Información de AFP
                 afp: afpId,
@@ -1164,7 +1202,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 horasExtras: horasExtrasNum,
                 cargo: trabajador.cargo || 'EMPLEADO'
             };
-            
+
             resultados.push(resultado);
         }
 
