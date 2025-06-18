@@ -941,6 +941,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
         if (!valorUF || isNaN(valorUF)) {
             return res.status(400).json({ success: false, message: 'Debe proporcionar el valor de la UF' });
         }
+
         // Cargar índices
         const getIndice = (nombre) => {
             const indice = indices.find(i => i.nombre === nombre);
@@ -968,7 +969,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 userId,
                 prestamo = 0,
                 anticipo = 0,
-                aguinaldoUF = 0  // ✅ NUEVO: Aguinaldo opcional en UF
+                aguinaldoUF = 0
             } = trabajador;
 
             const sueldoBase = parseFloat(sueldoBaseRaw || 0);
@@ -994,32 +995,27 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             }
             const tasaAFP = parseFloat(afp.tasa || 0);
 
-            // ✅ NUEVO: Cálculo del aguinaldo
+            // Cálculo del aguinaldo
             const aguinaldoUFNum = parseFloat(aguinaldoUF || 0);
             let aguinaldoCLP = 0;
             let aguinaldoUFValido = 0;
 
-            // Validar rango de aguinaldo (3-5 UF típicamente)
             if (aguinaldoUFNum >= 3 && aguinaldoUFNum <= 5 && valorUF > 0) {
                 aguinaldoUFValido = aguinaldoUFNum;
                 aguinaldoCLP = aguinaldoUFValido * valorUF;
             } else if (aguinaldoUFNum > 0) {
-                // Si está fuera del rango, agregar advertencia
                 advertencias.push({
                     rut,
                     nombre,
                     mensaje: `El aguinaldo de ${aguinaldoUFNum} UF está fuera del rango típico (3-5 UF).`,
                     tipo: 'aguinaldo_atipico'
                 });
-                
             }
 
             console.log("logs aguinaldo:");
             console.log("uf", valorUF);
             console.log("aguinaldoufNum : ", aguinaldoUFNum);
             console.log("aguinaldoCLP : ", aguinaldoCLP);
-            
-            
 
             // BLOQUE DE ACTUALIZACIÓN DE SUELDO BASE
             try {
@@ -1047,27 +1043,66 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
             const totalPrestamos = prestamos.reduce((sum, prestamo) => sum + parseFloat(prestamo.monto_total), 0);
 
-            // BLOQUE DE ACTUALIZACIÓN DEL PRÉSTAMO
+
+            // BLOQUE DE ACTUALIZACIÓN DEL PRÉSTAMO (controlado)
             if (prestamo > 0) {
                 try {
-                    console.log(`Procesando préstamo para usuario ID: ${userId}`);
+                    const nombrePrestamo = `Préstamo Liquidación ${new Date().toLocaleDateString('es-CL')}`;
 
-                    await executeQuery(`
-                        INSERT INTO prestamos_contrato (id_contrato, nombre_prestamo, monto_total)
-                        VALUES (?, ?, ?)
-                    `, [userId, `Préstamo Liquidación ${new Date().toLocaleDateString()}`, prestamo]);
+                    // Verificar si ya existe un préstamo con ese nombre para ese contrato
+                    const existing = await executeQuery(`
+            SELECT COUNT(*) AS count 
+            FROM prestamos_contrato 
+            WHERE id_contrato = ? AND nombre_prestamo = ?
+        `, [userId, nombrePrestamo]);
 
-                    console.log(`Préstamo creado correctamente para usuario ID: ${userId}`);
                 } catch (err) {
-                    console.error(`Error creando préstamo para usuario ID ${userId}:`, err.message);
+                    console.error(`❌ Error creando préstamo para usuario ID ${userId}:`, err.message);
                 }
             }
 
-            // CÁLCULOS DE LIQUIDACIÓN
-            // 1️⃣ Prorrateo del sueldo base
-            const sueldoBaseProrrateado = (sueldoBase / 30) * diasTrabajadosNum;
+            // ==================== CÁLCULOS DE LIQUIDACIÓN ====================
 
-            // 2️⃣ Gratificación mensual (para tramo IUSC)
+            // 1️⃣ PASO 1: CÁLCULO DEL SUELDO BRUTO
+            console.log("=== PASO 1: SUELDO BRUTO ===");
+
+            // Prorrateo del sueldo base
+            const sueldoBaseProrrateado = (sueldoBase / 30) * diasTrabajadosNum;
+            console.log("Sueldo Base Prorrateado:", sueldoBaseProrrateado);
+
+            // Gratificación prorrateada
+            let gratificacion = sueldoBaseProrrateado * 0.25;
+            const topeGratificacion = (sueldoMinimo * 4.75) / 12;
+            if (gratificacion > topeGratificacion) {
+                gratificacion = topeGratificacion;
+            }
+            console.log("Gratificación:", gratificacion);
+
+            // Horas extras
+            const factorBase = (28 / 30) / (horasLegales * 4);
+            const fhe = factorBase * 1.5;
+            const horasExtrasCalculadas = sueldoBase * fhe * horasExtrasNum;
+            console.log("Horas Extras Calculadas:", horasExtrasCalculadas);
+
+            // Sueldo bruto total
+            const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas + aguinaldoCLP;
+            console.log("SUELDO BRUTO TOTAL:", sueldoBruto);
+
+            // 2️⃣ PASO 2: CÁLCULO DE DESCUENTOS LEGALES
+            console.log("=== PASO 2: DESCUENTOS LEGALES ===");
+
+            // Descuentos previsionales
+            const descuentoAFP = sueldoBruto * (tasaAFP / 100);
+            console.log("Descuento AFP:", descuentoAFP);
+
+            const descuentoSalud = sueldoBruto * (planSalud / 100);
+            console.log("Descuento Salud:", descuentoSalud);
+
+            const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
+            console.log("Descuento Cesantía:", descuentoCesantia);
+
+            // Cálculo del impuesto IUSC
+            // Para IUSC usamos gratificación mensual completa (no prorrateada)
             let gratificacionMensual = sueldoBase * 0.25;
             const topeGratificacionMensual = (sueldoMinimo * 4.75) / 12;
             if (gratificacionMensual > topeGratificacionMensual) {
@@ -1075,7 +1110,6 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             }
             const sueldoBrutoMensualPactado = sueldoBase + gratificacionMensual;
 
-            // 3️⃣ Tramo IUSC
             const baseTributableMensual = sueldoBrutoMensualPactado
                 - (sueldoBase * (tasaAFP / 100))
                 - (sueldoBase * (planSalud / 100))
@@ -1100,46 +1134,33 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
                 impuestoIUSC = Math.max(0, impuestoIUSC);
             }
+            console.log("Impuesto IUSC:", impuestoIUSC);
 
-            // 4️⃣ Gratificación prorrateada (devengado real)
-            let gratificacion = sueldoBaseProrrateado * 0.25;
-            const topeGratificacion = (sueldoMinimo * 4.75) / 12;
-            if (gratificacion > topeGratificacion) {
-                gratificacion = topeGratificacion;
-            }
+            // Total descuentos legales
+            const totalDescuentosLegales = descuentoAFP + descuentoSalud + descuentoCesantia + impuestoIUSC;
+            console.log("TOTAL DESCUENTOS LEGALES:", totalDescuentosLegales);
 
-            // 5️⃣ Horas extras
-            const factorBase = (28 / 30) / (horasLegales * 4);
-            const fhe = factorBase * 1.5;
-            const horasExtrasCalculadas = sueldoBase * fhe * horasExtrasNum;
+            // 3️⃣ PASO 3: SUELDO LÍQUIDO LEGAL (después de descuentos legales)
+            const sueldoLiquidoLegal = sueldoBruto - totalDescuentosLegales;
+            console.log("SUELDO LÍQUIDO LEGAL:", sueldoLiquidoLegal);
 
-            // 6️⃣ Sueldo bruto real - ✅ MODIFICADO: Incluir aguinaldo completo
-            const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas + aguinaldoCLP;
+            // 4️⃣ PASO 4: DESCUENTOS DEL MES
+            console.log("=== PASO 4: DESCUENTOS DEL MES ===");
 
-            
-
-            // 7️⃣ Descuentos
-            const descuentoAFP = sueldoBruto * (tasaAFP / 100);
-            console.log("Descuento AFP:", descuentoAFP);
-            const descuentoSalud = sueldoBruto * (planSalud / 100);
-            console.log("Descuento Salud:", descuentoSalud);
-            const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
-            console.log("Descuento Cesantía:", descuentoCesantia);
-            const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
-            console.log("Leyes Sociales:", leyesSociales);
             const descuentoPrestamo = totalPrestamos;
             console.log("Descuento Préstamo:", descuentoPrestamo);
 
-
-            // Descuento por anticipo
             const descuentoAnticipo = anticipoNum;
+            console.log("Descuento Anticipo:", descuentoAnticipo);
 
-            // Total de descuentos
-            const totalDescuentos = leyesSociales + impuestoIUSC + descuentoPrestamo + descuentoAnticipo;
-            console.log("Total Descuentos:", totalDescuentos);
-            const sueldoLiquido = sueldoBruto - totalDescuentos;
-            console.log("Sueldo Líquido:", sueldoLiquido);
-            const baseTributable = sueldoBruto - leyesSociales;
+            const descuentoAguinaldo = aguinaldoCLP;
+            console.log("Descuento Aguinaldo:", descuentoAguinaldo);
+            const totalDescuentosMes = descuentoPrestamo + descuentoAnticipo + descuentoAguinaldo;
+            console.log("TOTAL DESCUENTOS DEL MES:", totalDescuentosMes);
+
+            // 5️⃣ PASO 5: SUELDO LÍQUIDO A PAGAR (final)
+            const sueldoLiquidoAPagar = sueldoLiquidoLegal - totalDescuentosMes;
+            console.log("SUELDO LÍQUIDO A PAGAR:", sueldoLiquidoAPagar);
 
             // Validaciones de anticipo (como advertencias, no errores)
             const porcentajeAnticipo = anticipoNum > 0 ? (anticipoNum / sueldoBase) * 100 : 0;
@@ -1163,6 +1184,11 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 });
             }
 
+            // Para compatibilidad, mantenemos algunos campos calculados
+            const baseTributable = sueldoBruto - (descuentoAFP + descuentoSalud + descuentoCesantia);
+            const leyesSociales = descuentoAFP + descuentoSalud + descuentoCesantia;
+            const totalDescuentos = totalDescuentosLegales + totalDescuentosMes + descuentoAguinaldo; // Total general
+
             const resultado = {
                 rut,
                 nombre: nombre || 'Sin nombre',
@@ -1173,22 +1199,36 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 fhe: Math.round(fhe * 1000000) / 1000000,
                 gratificacion: Math.round(gratificacion * 100) / 100,
                 horasExtrasCalculadas: Math.round(horasExtrasCalculadas * 100) / 100,
+
+                // Descuentos legales individuales
                 descuentoAFP: Math.round(descuentoAFP * 100) / 100,
                 descuentoSalud: Math.round(descuentoSalud * 100) / 100,
                 descuentoCesantia: Math.round(descuentoCesantia * 100) / 100,
                 impuestoIUSC: Math.round(impuestoIUSC * 100) / 100,
-                tramoImpuesto: tramoIUSC?.tramo || 0,
-                sueldoLiquido: Math.round(sueldoLiquido * 100) / 100,
-                baseTributable: Math.round(baseTributable * 100) / 100,
+
+                // ✅ NUEVOS CAMPOS: Totales por categoría
+                totalDescuentosLegales: Math.round(totalDescuentosLegales * 100) / 100,
+                sueldoLiquidoLegal: Math.round(sueldoLiquidoLegal * 100) / 100,
+
+                // Descuentos del mes
+                prestamo: Math.round(descuentoPrestamo * 100) / 100,
+                anticipo: Math.round(descuentoAnticipo * 100) / 100,
+                descuentoAguinaldo: Math.round(descuentoAguinaldo * 100) / 100,
+                totalDescuentosMes: Math.round(totalDescuentosMes * 100) / 100,
+
+                // ✅ CAMPO PRINCIPAL: Sueldo final a pagar
+                sueldoLiquidoAPagar: Math.round(sueldoLiquidoAPagar * 100) / 100,
+
+                // Campos para compatibilidad (mantener para no romper frontend)
+                sueldoLiquido: Math.round(sueldoLiquidoAPagar * 100) / 100, // Alias del campo principal
                 leyesSociales: Math.round(leyesSociales * 100) / 100,
                 totalDescuentos: Math.round(totalDescuentos * 100) / 100,
-                prestamo: Math.round(descuentoPrestamo * 100) / 100,
+                baseTributable: Math.round(baseTributable * 100) / 100,
 
-                // Información del anticipo
-                anticipo: Math.round(descuentoAnticipo * 100) / 100,
+                tramoImpuesto: tramoIUSC?.tramo || 0,
                 porcentajeAnticipo: Math.round(porcentajeAnticipo * 100) / 100,
 
-                // ✅ NUEVO: Información del aguinaldo
+                // Información del aguinaldo
                 aguinaldoUF: aguinaldoUFValido,
                 aguinaldoCLP: Math.round(aguinaldoCLP * 100) / 100,
 
