@@ -1152,9 +1152,9 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             const sueldoBrutoMensualPactado = sueldoBase + gratificacionMensual;
 
             const baseTributableMensual = sueldoBrutoMensualPactado
-                - (sueldoBase * (tasaAFP / 100))
-                - (sueldoBase * (planSalud / 100))
-                - (sueldoBase * (tasaCesantia / 100));
+                - (sueldoBrutoMensualPactado * (tasaAFP / 100))
+                - (sueldoBrutoMensualPactado * (planSalud / 100))
+                - (sueldoBrutoMensualPactado * (tasaCesantia / 100));
 
             const baseTributableUTM = baseTributableMensual / valorUTM;
 
