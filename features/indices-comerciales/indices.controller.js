@@ -1,6 +1,9 @@
 import axios from 'axios';
 import { format } from 'date-fns';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+
 
 // API
 import cmfClient from "../../api/cmf/client.js"; // cliente para la api CMF
@@ -912,6 +915,53 @@ const calcularLiquidacion = async (req, res) => {
 };
 
 
+const guardarLiquidacionesMensuales = async (resultados, mes, anio) => {
+    const idsLiquidaciones = [];
+
+    try {
+        for (const resultado of resultados) {
+            const {
+                userId,
+                sueldoBruto,
+                sueldoLiquidoAPagar,
+                totalDescuentos,
+                gratificacion,
+                aguinaldoCLP,
+                anticipo,
+                prestamo,
+                impuestoIUSC
+            } = resultado;
+
+            const insert = await executeQuery(`
+                INSERT INTO liquidaciones_mensuales 
+                (id_usuario, mes, anio, sueldo_bruto, sueldo_liquido, total_descuentos, gratificacion, aguinaldo, anticipo, prestamo, impuesto_iusc)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                userId,
+                mes,
+                anio,
+                sueldoBruto,
+                sueldoLiquidoAPagar,
+                totalDescuentos,
+                gratificacion,
+                aguinaldoCLP,
+                anticipo,
+                prestamo,
+                impuestoIUSC
+            ]);
+
+            idsLiquidaciones.push({ userId, insertId: insert.insertId });
+        }
+
+        console.log("✅ Liquidaciones guardadas correctamente en historial mensual.");
+        return idsLiquidaciones;
+
+    } catch (error) {
+        console.error("❌ Error al guardar liquidaciones mensuales:", error.message);
+        return [];
+    }
+};
+
 
 // SOLUCIÓN TEMPORAL: Buscar usuario por ID en lugar de RUT encriptado
 // Modifica tu función calcularLiquidacionesMultiples para usar el ID del usuario
@@ -1044,24 +1094,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             const totalPrestamos = prestamos.reduce((sum, prestamo) => sum + parseFloat(prestamo.monto_total), 0);
 
 
-            // BLOQUE DE ACTUALIZACIÓN DEL PRÉSTAMO (controlado)
-            if (prestamo > 0) {
-                try {
-                    const nombrePrestamo = `Préstamo Liquidación ${new Date().toLocaleDateString('es-CL')}`;
 
-                    // Verificar si ya existe un préstamo con ese nombre para ese contrato
-                    const existing = await executeQuery(`
-            SELECT COUNT(*) AS count 
-            FROM prestamos_contrato 
-            WHERE id_contrato = ? AND nombre_prestamo = ?
-        `, [userId, nombrePrestamo]);
-
-                } catch (err) {
-                    console.error(`❌ Error creando préstamo para usuario ID ${userId}:`, err.message);
-                }
-            }
-
-            // ==================== CÁLCULOS DE LIQUIDACIÓN ====================
 
             // 1️⃣ PASO 1: CÁLCULO DEL SUELDO BRUTO
             console.log("=== PASO 1: SUELDO BRUTO ===");
@@ -1248,6 +1281,17 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
         console.log(`=== FIN calcularLiquidacionesMultiples - Procesados: ${resultados.length}, Errores: ${errores.length}, Advertencias: ${advertencias.length} ===`);
 
+        // Guardar en la tabla y obtener IDs
+        const idsGuardados = await guardarLiquidacionesMensuales(resultados, new Date().getMonth() + 1, new Date().getFullYear());
+
+        // Asociar cada resultado con su ID insertado
+        resultados.forEach(resultado => {
+            const match = idsGuardados.find(r => r.userId === resultado.userId);
+            if (match) {
+                resultado.idLiquidacion = match.insertId;
+            }
+        });
+
         return res.status(200).json({
             success: true,
             message: 'Cálculo completado',
@@ -1256,11 +1300,92 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             advertencias
         });
 
+
     } catch (err) {
         console.error('❌ ERROR GENERAL en calcularLiquidacionesMultiples:', err);
         return res.status(500).json({ success: false, message: 'Error interno del servidor', error: err.message });
     }
 };
+
+const obtenerHistorialLiquidaciones = async (req, res) => {
+  try {
+    const resultados = await executeQuery(`
+      SELECT 
+          lm.id AS id_liquidacion,
+          lm.id_usuario,
+          dp.nombre AS nombre,
+          dp.rut,
+          lm.mes,
+          lm.anio,
+          lm.version,
+          lm.sueldo_bruto,
+          lm.sueldo_liquido,
+          lm.total_descuentos,
+          lm.gratificacion,
+          lm.aguinaldo,
+          lm.anticipo,
+          lm.prestamo,
+          lm.impuesto_iusc,
+          lm.fecha_creacion,
+          pdf.id AS pdf_id,
+          pdf.nombre_archivo,
+          LENGTH(pdf.contenido) AS pdf_tamano,
+          pdf.fecha_subida
+      FROM liquidaciones_mensuales lm
+      JOIN usuario u ON u.id = lm.id_usuario
+      JOIN datos_personales dp ON dp.id_usuario = u.id
+      LEFT JOIN pdf_liquidaciones pdf ON pdf.id_liquidacion = lm.id
+      ORDER BY dp.nombre, lm.anio DESC, lm.mes DESC, lm.version DESC
+    `);
+
+    const historialAgrupado = [];
+
+    for (const row of resultados) {
+      const index = historialAgrupado.findIndex(u => u.id_usuario === row.id_usuario);
+
+      const liquidacion = {
+        id: row.id_liquidacion,
+        mes: row.mes,
+        anio: row.anio,
+        version: row.version,
+        sueldo_bruto: row.sueldo_bruto,
+        sueldo_liquido: row.sueldo_liquido,
+        total_descuentos: row.total_descuentos,
+        pdf_id: row.pdf_id,
+        nombre_archivo: row.nombre_archivo,
+        pdf_tamano: row.pdf_tamano,
+        fecha_subida: row.fecha_subida
+      };
+
+      if (index === -1) {
+        historialAgrupado.push({
+          id_usuario: row.id_usuario,
+          nombre: row.nombre,
+          rut: row.rut,
+          liquidaciones: [liquidacion]
+        });
+      } else {
+        historialAgrupado[index].liquidaciones.push(liquidacion);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Historial agrupado obtenido correctamente',
+      data: historialAgrupado
+    });
+
+  } catch (err) {
+    console.error('❌ Error al obtener historial agrupado:', err.message);
+    return res.status(500).json({ success: false, message: 'Error interno', error: err.message });
+  }
+};
+
+
+
+
+
+
 //calculo cotizaciones 
 
 
@@ -1521,12 +1646,14 @@ export {
     calcularLiquidacion,
     calcularSueldoBaseDesdeNeto,
     calcularLiquidacionesMultiples,
+    obtenerHistorialLiquidaciones,
     calcularCotizacionEmpresa,
     crearPrestamoInterno,
     getPrestamos,
     // Nuevas funciones
     updateAFPById,
     updateIUSCByTramo,
-    updateAFCById
+    updateAFCById,
+    guardarLiquidacionesMensuales
 
 };

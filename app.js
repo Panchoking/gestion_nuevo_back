@@ -33,6 +33,7 @@ import organizacionalRoutes from './features/clientes/organizacional/organizacio
 import indicesRoutes from './features/indices-comerciales/indices.routes.js';
 
 
+
 // init
 const app = express();
 
@@ -82,5 +83,6 @@ app.use('/api/asignacion', asignacionRoutes);
 app.use('/api/clientes', clientesRoutes);
 app.use('/api/organizacion', organizacionalRoutes);
 app.use('/api/indices', indicesRoutes);
+
 
 export default app;

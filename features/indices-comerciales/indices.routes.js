@@ -1,5 +1,6 @@
 //índice.routes.js
 import express from 'express';
+import multer from 'multer';
 import {
   getAllIndices,
   getIndexByField,
@@ -16,6 +17,7 @@ import {
   calcularLiquidacion,
   calcularSueldoBaseDesdeNeto,
   calcularLiquidacionesMultiples,
+  obtenerHistorialLiquidaciones,
   calcularCotizacionEmpresa,
   crearPrestamoInterno,
   getPrestamos,
@@ -25,8 +27,31 @@ import {
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
+import {
+  guardarPDF,
+  obtenerPDFsUsuario,
+  descargarPDF,
+  obtenerTodosPDFs
+} from './pdfs/pdf.controller.js';
+
 
 const router = express.Router();
+
+const storage = multer.memoryStorage();
+const upload = multer({ 
+    storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // Límite de 10MB
+    },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf') {
+            cb(null, true);
+        } else {
+            cb(new Error('Solo se permiten archivos PDF'));
+        }
+    }
+});
+
 
 // Public routes
 router.get('/generales/', authenticateToken, getAllIndices);
@@ -61,7 +86,16 @@ router.get('/ipc/anual', authenticateToken, obtenerIPC);
 // CALCULOS
 router.post('/calculos/liquidacion', calcularLiquidacion);
 router.post('/calculos/sueldo-base', calcularSueldoBaseDesdeNeto);
+//liquidaciones multiples
 router.post('/calculos/liquidaciones', calcularLiquidacionesMultiples);
+router.get('/historial', obtenerHistorialLiquidaciones);
+
+// PDF routes
+// Rutas para PDF
+router.post('/pdf/guardar', upload.single('pdf'), guardarPDF);
+router.get('/pdf/usuario/:id_usuario', authenticateToken, obtenerPDFsUsuario);
+router.get('/pdf/descargar/:id_pdf', authenticateToken, descargarPDF);
+router.get('/pdf/todos', authenticateToken, obtenerTodosPDFs);
 
 
 router.post('/cotizacion-empresa', calcularCotizacionEmpresa);
