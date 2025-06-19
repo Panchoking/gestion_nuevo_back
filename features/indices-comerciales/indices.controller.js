@@ -809,14 +809,17 @@ const calcularLiquidacion = async (req, res) => {
             return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM del mes' });
         }
         const valorUTM = parseFloat(utmData.UTMs[0].Valor.replace(/\./g, '').replace(',', '.'));
-
+        console.log("tasas : ");
+         console.log("tasa cesantia : ", tasaCesantia);
+         console.log("plan salud : ", planSalud);
+        console.log("tasaa de afp : ", tasaAFP);
         // 5 Calcular tramo IUSC sobre base mensual pactada
         const baseTributableMensual = sueldoBrutoMensualPactado
-            - (sueldoBase * (tasaAFP / 100))
-            - (sueldoBase * (planSalud / 100))
-            - (sueldoBase * (tasaCesantia / 100));
+            - (sueldoBrutoMensualPactado * (tasaAFP / 100))
+            - (sueldoBrutoMensualPactado * (planSalud / 100))
+            - (sueldoBrutoMensualPactado * (tasaCesantia / 100));
 
-
+        console.log("base tributable mensual : ", baseTributableMensual);
         const baseTributableUTM = baseTributableMensual / valorUTM;
 
         const tablaIUSC = await executeQuery(`SELECT * FROM valores_iusc;`);
@@ -834,9 +837,14 @@ const calcularLiquidacion = async (req, res) => {
         if (tramoIUSC && tramoIUSC.tasa !== null) {
             const tasa = parseFloat(tramoIUSC.tasa);
             const rebajar = parseFloat(tramoIUSC.rebajar_utm);
+            console.log("rebajar UTM : ", rebajar);
             impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
             impuestoIUSC = Math.max(0, impuestoIUSC);
         }
+        console.log("utm valor : ", valorUTM);
+        console.log("tramo IUSC : ", tramoIUSC);
+        console.log("base tributable UTM : ", baseTributableUTM);
+        
         console.log("impuesto IUSC : ", impuestoIUSC);
 
         // 6 Ahora sí: calcular gratificación prorrateada real
