@@ -391,9 +391,23 @@ const getUTM = async (req, res) => {
 
 const getUTMbyDate = async (req, res) => {
     try {
-        const fecha = req.query.fecha; // fecha obtenida del front
+        let fecha = req.query.fecha;
 
-        const utmData = await cmfClient.getUTMbyDate(fecha);
+        if (!fecha) {
+            return res.status(400).json({
+                success: false,
+                message: "Debe proporcionar una fecha válida en formato YYYY-MM-DD"
+            });
+        }
+
+        // Normalizar a primer día del mes
+        const fechaObj = new Date(fecha);
+        const fechaPrimerDiaMes = new Date(fechaObj.getFullYear(), fechaObj.getMonth(), 1)
+            .toISOString()
+            .split('T')[0]; // "YYYY-MM-DD"
+
+        const utmData = await cmfClient.getUTMbyDate(fechaPrimerDiaMes);
+
         if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
             return res.status(404).json({
                 success: false,
@@ -402,7 +416,7 @@ const getUTMbyDate = async (req, res) => {
         }
 
         const utm = utmData.UTMs[0];
-        console.log('UTM del mes obtenida:', utm);
+        console.log('✅ UTM del mes obtenida:', utm);
 
         return res.status(200).json({
             success: true,
@@ -413,7 +427,7 @@ const getUTMbyDate = async (req, res) => {
             }
         });
     } catch (err) {
-        console.error('Error obteniendo UTM del mes:', err);
+        console.error('❌ Error obteniendo UTM del mes:', err);
         return res.status(500).json({
             success: false,
             message: 'Error obteniendo UTM del mes',
@@ -755,7 +769,17 @@ const calcularSueldoBaseDesdeNeto = async (req, res) => {
 };
 const calcularLiquidacion = async (req, res) => {
     try {
-        const { sueldoBase, horasExtras, diasTrabajados, afp, tipoContrato, montoAnticipo = 0, aceptarExcesoAnticipo = false } = req.body;
+        const {
+            sueldoBase,
+            horasExtras,
+            diasTrabajados,
+            afp,
+            tipoContrato,
+            montoAnticipo = 0,
+            aceptarExcesoAnticipo = false,
+            fecha,
+            valorUTM // ✅ RECIBIR VALOR UTM DEL FRONTEND
+        } = req.body;
 
         if (!sueldoBase || isNaN(sueldoBase)) {
             return res.status(400).json({ success: false, message: 'Sueldo base inválido' });
@@ -803,15 +827,32 @@ const calcularLiquidacion = async (req, res) => {
         const [afcData] = await executeQuery('SELECT fi_trabajador FROM afc WHERE id = ?', [tipoContratoId]);
         const tasaCesantia = parseFloat(afcData?.fi_trabajador) || 0;
 
-        // 4 Obtener UTM
-        const utmData = await cmfClient.getCurrentUTM();
-        if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
-            return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM del mes' });
+        // 4 Obtener UTM - USAR EL VALOR DEL FRONTEND SI EXISTE
+        let valorUTMFinal;
+
+        if (valorUTM && !isNaN(valorUTM) && valorUTM > 0) {
+            // ✅ USAR UTM DEL FRONTEND
+            valorUTMFinal = parseFloat(valorUTM);
+            console.log("Usando UTM del frontend:", valorUTMFinal);
+        } else {
+            // ❌ FALLBACK: calcular UTM del backend (como antes)
+            let fechaParaUTM = new Date();
+            if (fecha) {
+                const fechaObj = new Date(fecha);
+                fechaParaUTM = new Date(fechaObj.getFullYear(), fechaObj.getMonth(), 1);
+            }
+            const fechaFormateada = fechaParaUTM.toISOString().split('T')[0];
+
+            const utmData = await cmfClient.getUTMbyDate(fechaFormateada);
+            if (!utmData || !utmData.UTMs || utmData.UTMs.length === 0) {
+                return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM del mes' });
+            }
+            valorUTMFinal = parseFloat(utmData.UTMs[0].Valor.replace(/\./g, '').replace(',', '.'));
+            console.log("Usando UTM del backend:", valorUTMFinal);
         }
-        const valorUTM = parseFloat(utmData.UTMs[0].Valor.replace(/\./g, '').replace(',', '.'));
         console.log("tasas : ");
-         console.log("tasa cesantia : ", tasaCesantia);
-         console.log("plan salud : ", planSalud);
+        console.log("tasa cesantia : ", tasaCesantia);
+        console.log("plan salud : ", planSalud);
         console.log("tasaa de afp : ", tasaAFP);
         // 5 Calcular tramo IUSC sobre base mensual pactada
         const baseTributableMensual = sueldoBrutoMensualPactado
@@ -820,7 +861,9 @@ const calcularLiquidacion = async (req, res) => {
             - (sueldoBrutoMensualPactado * (tasaCesantia / 100));
 
         console.log("base tributable mensual : ", baseTributableMensual);
-        const baseTributableUTM = baseTributableMensual / valorUTM;
+        console.log("valor UTM final : ", valorUTMFinal);
+        const baseTributableUTM = baseTributableMensual / valorUTMFinal;
+        console.log("base tributable UTM : ", baseTributableUTM);
 
         const tablaIUSC = await executeQuery(`SELECT * FROM valores_iusc;`);
         let tramoIUSC = null;
@@ -838,13 +881,13 @@ const calcularLiquidacion = async (req, res) => {
             const tasa = parseFloat(tramoIUSC.tasa);
             const rebajar = parseFloat(tramoIUSC.rebajar_utm);
             console.log("rebajar UTM : ", rebajar);
-            impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
+            impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTMFinal;
             impuestoIUSC = Math.max(0, impuestoIUSC);
         }
         console.log("utm valor : ", valorUTM);
         console.log("tramo IUSC : ", tramoIUSC);
         console.log("base tributable UTM : ", baseTributableUTM);
-        
+
         console.log("impuesto IUSC : ", impuestoIUSC);
 
         // 6 Ahora sí: calcular gratificación prorrateada real
@@ -996,6 +1039,32 @@ const guardarLiquidacionesMensuales = async (resultados, mes, anio) => {
     }
 };
 
+const eliminarLiquidaciones = async (req, res) => {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ success: false, message: 'No se recibieron IDs válidos para eliminar.' });
+    }
+
+    try {
+        // Construir placeholders dinámicos (?, ?, ?, ...)
+        const placeholders = ids.map(() => '?').join(',');
+
+        await executeQuery(
+            `DELETE FROM liquidaciones_mensuales WHERE id IN (${placeholders})`,
+            ids
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: `Se eliminaron ${ids.length} liquidaciones correctamente.`
+        });
+    } catch (error) {
+        console.error("❌ Error al eliminar liquidaciones:", error.message);
+        return res.status(500).json({ success: false, message: 'Error interno al eliminar liquidaciones.' });
+    }
+};
+
 
 
 // SOLUCIÓN TEMPORAL: Buscar usuario por ID en lugar de RUT encriptado
@@ -1017,11 +1086,21 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             WHERE nombre IN ("horas_legales", "rmi_general", "plan_salud");
         `);
         const tablaIUSC = await executeQuery(`SELECT * FROM valores_iusc`);
-        const utmData = await cmfClient.getCurrentUTM();
+        let fechaParaUTM = new Date(); // por defecto: hoy
+
+        if (req.body.fecha) {
+            const fechaObj = new Date(req.body.fecha);
+            fechaParaUTM = new Date(fechaObj.getFullYear(), fechaObj.getMonth(), 1); // primer día del mes
+        }
+
+        const fechaFormateada = fechaParaUTM.toISOString().split('T')[0];
+
+        const utmData = await cmfClient.getUTMbyDate(fechaFormateada);
 
         if (!utmData?.UTMs?.length) {
-            return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM' });
+            return res.status(404).json({ success: false, message: 'No se encontró el valor de la UTM para la fecha indicada' });
         }
+
 
         if (!valorUF || isNaN(valorUF)) {
             return res.status(400).json({ success: false, message: 'Debe proporcionar el valor de la UF' });
@@ -1202,6 +1281,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
                 impuestoIUSC = Math.max(0, impuestoIUSC);
             }
+            console.log("valor UTM:", valorUTM);
             console.log("Impuesto IUSC:", impuestoIUSC);
 
             // Total descuentos legales
@@ -1343,8 +1423,8 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 };
 
 const obtenerHistorialLiquidaciones = async (req, res) => {
-  try {
-    const resultados = await executeQuery(`
+    try {
+        const resultados = await executeQuery(`
       SELECT 
           lm.id AS id_liquidacion,
           lm.id_usuario,
@@ -1373,47 +1453,47 @@ const obtenerHistorialLiquidaciones = async (req, res) => {
       ORDER BY dp.nombre, lm.anio DESC, lm.mes DESC, lm.version DESC
     `);
 
-    const historialAgrupado = [];
+        const historialAgrupado = [];
 
-    for (const row of resultados) {
-      const index = historialAgrupado.findIndex(u => u.id_usuario === row.id_usuario);
+        for (const row of resultados) {
+            const index = historialAgrupado.findIndex(u => u.id_usuario === row.id_usuario);
 
-      const liquidacion = {
-        id: row.id_liquidacion,
-        mes: row.mes,
-        anio: row.anio,
-        version: row.version,
-        sueldo_bruto: row.sueldo_bruto,
-        sueldo_liquido: row.sueldo_liquido,
-        total_descuentos: row.total_descuentos,
-        pdf_id: row.pdf_id,
-        nombre_archivo: row.nombre_archivo,
-        pdf_tamano: row.pdf_tamano,
-        fecha_subida: row.fecha_subida
-      };
+            const liquidacion = {
+                id: row.id_liquidacion,
+                mes: row.mes,
+                anio: row.anio,
+                version: row.version,
+                sueldo_bruto: row.sueldo_bruto,
+                sueldo_liquido: row.sueldo_liquido,
+                total_descuentos: row.total_descuentos,
+                pdf_id: row.pdf_id,
+                nombre_archivo: row.nombre_archivo,
+                pdf_tamano: row.pdf_tamano,
+                fecha_subida: row.fecha_subida
+            };
 
-      if (index === -1) {
-        historialAgrupado.push({
-          id_usuario: row.id_usuario,
-          nombre: row.nombre,
-          rut: row.rut,
-          liquidaciones: [liquidacion]
+            if (index === -1) {
+                historialAgrupado.push({
+                    id_usuario: row.id_usuario,
+                    nombre: row.nombre,
+                    rut: row.rut,
+                    liquidaciones: [liquidacion]
+                });
+            } else {
+                historialAgrupado[index].liquidaciones.push(liquidacion);
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Historial agrupado obtenido correctamente',
+            data: historialAgrupado
         });
-      } else {
-        historialAgrupado[index].liquidaciones.push(liquidacion);
-      }
+
+    } catch (err) {
+        console.error('❌ Error al obtener historial agrupado:', err.message);
+        return res.status(500).json({ success: false, message: 'Error interno', error: err.message });
     }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Historial agrupado obtenido correctamente',
-      data: historialAgrupado
-    });
-
-  } catch (err) {
-    console.error('❌ Error al obtener historial agrupado:', err.message);
-    return res.status(500).json({ success: false, message: 'Error interno', error: err.message });
-  }
 };
 
 
@@ -1689,6 +1769,7 @@ export {
     updateAFPById,
     updateIUSCByTramo,
     updateAFCById,
-    guardarLiquidacionesMensuales
+    guardarLiquidacionesMensuales,
+    eliminarLiquidaciones
 
 };

@@ -23,7 +23,8 @@ import {
   getPrestamos,
   updateAFPById,
   updateIUSCByTramo,
-  updateAFCById
+  updateAFCById,
+  eliminarLiquidaciones
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -89,6 +90,9 @@ router.post('/calculos/sueldo-base', calcularSueldoBaseDesdeNeto);
 //liquidaciones multiples
 router.post('/calculos/liquidaciones', calcularLiquidacionesMultiples);
 router.get('/historial', obtenerHistorialLiquidaciones);
+
+//eliminar registor por id
+router.post('/eliminar-liquidaciones', eliminarLiquidaciones);
 
 // PDF routes
 // Rutas para PDF
