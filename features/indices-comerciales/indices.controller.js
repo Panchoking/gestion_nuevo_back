@@ -940,10 +940,13 @@ const guardarLiquidacionesMensuales = async (resultados, mes, anio) => {
                 impuestoIUSC
             } = resultado;
 
-            const insert = await executeQuery(`
-                INSERT INTO liquidaciones_mensuales 
-                (id_usuario, mes, anio, sueldo_bruto, sueldo_liquido, total_descuentos, gratificacion, aguinaldo, anticipo, prestamo, impuesto_iusc)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            // Verificar si ya existe un registro exactamente igual
+            const [existing] = await executeQuery(`
+                SELECT * FROM liquidaciones_mensuales
+                WHERE id_usuario = ? AND mes = ? AND anio = ?
+                AND sueldo_bruto = ? AND sueldo_liquido = ? AND total_descuentos = ?
+                AND gratificacion = ? AND aguinaldo = ? AND anticipo = ?
+                AND prestamo = ? AND impuesto_iusc = ?
             `, [
                 userId,
                 mes,
@@ -958,17 +961,41 @@ const guardarLiquidacionesMensuales = async (resultados, mes, anio) => {
                 impuestoIUSC
             ]);
 
-            idsLiquidaciones.push({ userId, insertId: insert.insertId });
+            if (!existing) {
+                // Insertar solo si no existe un registro exactamente igual
+                const insert = await executeQuery(`
+                    INSERT INTO liquidaciones_mensuales 
+                    (id_usuario, mes, anio, sueldo_bruto, sueldo_liquido, total_descuentos, gratificacion, aguinaldo, anticipo, prestamo, impuesto_iusc)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    userId,
+                    mes,
+                    anio,
+                    sueldoBruto,
+                    sueldoLiquidoAPagar,
+                    totalDescuentos,
+                    gratificacion,
+                    aguinaldoCLP,
+                    anticipo,
+                    prestamo,
+                    impuestoIUSC
+                ]);
+
+                idsLiquidaciones.push({ userId, insertId: insert.insertId });
+            } else {
+                console.log(`Ya existe un registro idéntico para el usuario ${userId} en ${mes}/${anio}. No se inserta duplicado.`);
+            }
         }
 
-        console.log("✅ Liquidaciones guardadas correctamente en historial mensual.");
+        console.log(" Proceso de liquidaciones completado con historial.");
         return idsLiquidaciones;
 
     } catch (error) {
-        console.error("❌ Error al guardar liquidaciones mensuales:", error.message);
+        console.error(" Error al guardar liquidaciones mensuales:", error.message);
         return [];
     }
 };
+
 
 
 // SOLUCIÓN TEMPORAL: Buscar usuario por ID en lugar de RUT encriptado
