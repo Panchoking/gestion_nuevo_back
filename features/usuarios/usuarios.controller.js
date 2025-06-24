@@ -178,6 +178,12 @@ const getColaboradores = async (req, res) => {
     }
 };
 
+
+
+
+
+
+
 const getColaboradorPorId = async (req, res) => {
     const { id } = req.params;
 
@@ -677,13 +683,23 @@ const getAllNombreRutContrato = async (req, res) => {
         const colaboradores = await executeQuery(query);
 
         for (let colaborador of colaboradores) {
+            // Obtener préstamos
             const prestamos = await executeQuery(`
                 SELECT id, nombre_prestamo, monto_total
                 FROM prestamos_contrato
                 WHERE id_contrato = ?
-            `, [colaborador.contrato_id]); // ✅ Usar contrato_id en lugar de userId
+            `, [colaborador.contrato_id]);
 
             colaborador.prestamos = prestamos;
+
+            // Obtener horas extras
+            const [horasExtrasRow] = await executeQuery(`
+                SELECT SUM(r.hora_extra_aprobada) AS total_horas_extras
+                FROM registro r
+                WHERE r.id_usuario = ?
+            `, [colaborador.userId]);
+
+            colaborador.total_horas_extras = horasExtrasRow?.total_horas_extras ?? 0;
         }
 
         res.status(200).json({
@@ -784,5 +800,6 @@ export {
     updatePassword,
     getAllNombreRutContrato,
     crearPrestamoContrato,     // ✅ Nueva
-    eliminarPrestamo           // ✅ Nueva
+    eliminarPrestamo,           // ✅ Nueva
+    
 }

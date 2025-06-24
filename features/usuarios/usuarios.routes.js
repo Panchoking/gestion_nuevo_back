@@ -1,6 +1,7 @@
 import express from 'express';
 import executeQuery from "../../database/executeQuery.js";
 
+
 import {
     getAuthData,
     postColaborador,
@@ -16,7 +17,9 @@ import {
     getCount,
     getAllNombreRutContrato,
     crearPrestamoContrato,
-    eliminarPrestamo   
+    eliminarPrestamo,
+    
+  
 } from './usuarios.controller.js';
 
 // middlewares
@@ -76,5 +79,10 @@ router.get('/nombres-rut-contrato', authenticateToken, getAllNombreRutContrato);
 // En las rutas
 router.post('/prestamos', crearPrestamoContrato);
 router.delete('/prestamos/:id', eliminarPrestamo);
+
+
+
+
+
 
 export default router;
