@@ -692,12 +692,13 @@ const getAllNombreRutContrato = async (req, res) => {
 
             colaborador.prestamos = prestamos;
 
-            // Obtener horas extras
+   
+            // Obtener horas extras aprobadas (estado = 'Aprobado')
             const [horasExtrasRow] = await executeQuery(`
-                SELECT SUM(r.hora_extra_aprobada) AS total_horas_extras
-                FROM registro r
-                WHERE r.id_usuario = ?
-            `, [colaborador.userId]);
+            SELECT SUM(r.hora_extra_aprobada) AS total_horas_extras
+            FROM registro r
+            WHERE r.id_usuario = ? AND r.estado = 'Aprobado'
+        `, [colaborador.userId]);
 
             colaborador.total_horas_extras = horasExtrasRow?.total_horas_extras ?? 0;
         }
@@ -801,5 +802,5 @@ export {
     getAllNombreRutContrato,
     crearPrestamoContrato,     // ✅ Nueva
     eliminarPrestamo,           // ✅ Nueva
-    
+
 }
