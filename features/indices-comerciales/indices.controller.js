@@ -1164,7 +1164,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             let aguinaldoCLP = 0;
             let aguinaldoUFValido = 0;
 
-            if (aguinaldoUFNum >= 3 && aguinaldoUFNum <= 5 && valorUF > 0) {
+            if (aguinaldoUFNum >= 0 && aguinaldoUFNum <= 15 && valorUF > 0) {// cambio de rango de aguinaldo de 0 a 15 UF
                 aguinaldoUFValido = aguinaldoUFNum;
                 aguinaldoCLP = aguinaldoUFValido * valorUF;
             } else if (aguinaldoUFNum > 0) {
@@ -1590,7 +1590,7 @@ const calcularCotizacionEmpresa = async (req, res) => {
         let aguinaldoCLP = 0;
         let aguinaldoUFValido = 0;
 
-        if (!isNaN(aguinaldoUF) && parseFloat(aguinaldoUF) >= 3 && parseFloat(aguinaldoUF) <= 5) {
+        if (!isNaN(aguinaldoUF) && parseFloat(aguinaldoUF) >= 0 && parseFloat(aguinaldoUF) <= 15) {// cambio de rango de aguinaldo de 0 a 15 UF
             aguinaldoUFValido = parseFloat(aguinaldoUF);
             aguinaldoCLP = aguinaldoUFValido * valorUF;
             aguinaldoMensual = aguinaldoCLP / 12;
