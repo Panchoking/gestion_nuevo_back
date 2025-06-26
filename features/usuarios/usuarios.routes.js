@@ -18,8 +18,9 @@ import {
     getAllNombreRutContrato,
     crearPrestamoContrato,
     eliminarPrestamo,
-    
-  
+    aprobar_horas_extras
+
+
 } from './usuarios.controller.js';
 
 // middlewares
@@ -74,6 +75,8 @@ router.get('/perfil', authenticateToken, getPerfil);
 router.put('/cambiar-password', authenticateToken, updatePassword);
 
 router.get('/nombres-rut-contrato', authenticateToken, getAllNombreRutContrato);
+//horas
+router.post('/registro/aprobar-horas', aprobar_horas_extras);
 
 //prestamos
 // En las rutas

@@ -31,6 +31,7 @@ import organizacionalRoutes from './features/clientes/organizacional/organizacio
 
 // indices comerciales
 import indicesRoutes from './features/indices-comerciales/indices.routes.js';
+import archivoRoutes from './features/archivo/archivo.routes.js';
 
 
 
@@ -83,6 +84,7 @@ app.use('/api/asignacion', asignacionRoutes);
 app.use('/api/clientes', clientesRoutes);
 app.use('/api/organizacion', organizacionalRoutes);
 app.use('/api/indices', indicesRoutes);
+app.use('/api/archivo', archivoRoutes);
 
 
 export default app;

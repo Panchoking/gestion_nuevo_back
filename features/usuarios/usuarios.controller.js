@@ -658,10 +658,18 @@ const updateEstadoColaborador = async (req, res) => {
 
 const getAllNombreRutContrato = async (req, res) => {
     try {
+        // Obtener la fecha desde los parámetros de la URL
+        const fechaCalculo = req.query.fecha;
+        const fecha = new Date(fechaCalculo);
+
+        const mes = fecha.getMonth() + 1; // getMonth() devuelve 0-11
+        const anio = fecha.getFullYear();
+
         const query = `
             SELECT 
                 u.id AS userId,  
                 dp.nombre AS dp_nombre,
+                dp.apellido AS dp_apellido, 
                 dp.rut AS dp_rut,
                 tc.nombre AS tipo_contrato,
                 CAST(c.sueldo_base AS DECIMAL(15,2)) AS sueldo_base,
@@ -692,13 +700,16 @@ const getAllNombreRutContrato = async (req, res) => {
 
             colaborador.prestamos = prestamos;
 
-   
-            // Obtener horas extras aprobadas (estado = 'Aprobado')
+            // Obtener horas extras aprobadas para el mes y año seleccionados
             const [horasExtrasRow] = await executeQuery(`
-            SELECT SUM(r.hora_extra_aprobada) AS total_horas_extras
-            FROM registro r
-            WHERE r.id_usuario = ? AND r.estado = 'Aprobado'
-        `, [colaborador.userId]);
+                SELECT 
+                    SUM(r.hora_extra_aprobada) AS total_horas_extras
+                FROM registro r
+                WHERE r.id_usuario = ?
+                AND r.estado = 'Aprobado'
+                AND MONTH(r.fecha) = ?
+                AND YEAR(r.fecha) = ?
+            `, [colaborador.userId, mes, anio]);
 
             colaborador.total_horas_extras = horasExtrasRow?.total_horas_extras ?? 0;
         }
@@ -718,6 +729,90 @@ const getAllNombreRutContrato = async (req, res) => {
         });
     }
 };
+
+
+
+const aprobar_horas_extras = async (req, res) => {
+    const { rut, id_usuario, horas } = req.body;
+
+    console.log("=== DEBUG ENTRADA ===");
+    console.log("RUT recibido:", rut);
+    console.log("ID Usuario recibido:", id_usuario);
+    console.log("Horas a aprobar:", horas);
+
+    try {
+        let usuarioId = id_usuario;
+
+        // Si no viene el ID directamente, buscar por RUT
+        if (!usuarioId && rut) {
+            const [usuario] = await executeQuery(`
+                SELECT u.id AS id 
+                FROM usuario u
+                JOIN datos_personales dp ON u.id = dp.id_usuario
+                WHERE dp.rut = ?
+            `, [rut]);
+
+            if (!usuario) {
+                return res.status(404).json({ success: false, message: "Usuario no encontrado con ese RUT" });
+            }
+
+            usuarioId = usuario.id;
+        }
+
+        if (!usuarioId || isNaN(horas)) {
+            return res.status(400).json({ success: false, message: "ID de usuario o cantidad de horas inválida" });
+        }
+
+        // Verificar si ya existe un registro del mes actual con estado Aprobado
+        const [registroExistente] = await executeQuery(`
+            SELECT id FROM registro
+            WHERE id_usuario = ?
+              AND MONTH(fecha) = MONTH(CURDATE())
+              AND YEAR(fecha) = YEAR(CURDATE())
+              AND estado = 'Aprobado'
+            LIMIT 1;
+        `, [usuarioId]);
+
+        if (registroExistente) {
+            // Ya existe → hacer UPDATE
+            const updateResult = await executeQuery(`
+                UPDATE registro
+                SET hora_extra_aprobada = ?, hora_extra = 0, estado = 'Aprobado'
+                WHERE id = ?;
+            `, [horas, registroExistente.id]);
+
+            console.log(`📝 Registro actualizado (ID: ${registroExistente.id})`);
+            return res.status(200).json({
+                success: true,
+                message: "Horas extras actualizadas correctamente",
+                updated: true
+            });
+        } else {
+            // No existe → hacer INSERT
+            const insertResult = await executeQuery(`
+                INSERT INTO registro (id_usuario, fecha, hora_extra, hora_extra_aprobada, estado)
+                VALUES (?, CURDATE(), 0, ?, 'Aprobado');
+            `, [usuarioId, horas]);
+
+            console.log("➕ Registro insertado con ID:", insertResult.insertId);
+            return res.status(201).json({
+                success: true,
+                message: "Horas extras registradas correctamente",
+                inserted: true
+            });
+        }
+
+    } catch (error) {
+        console.error("❌ Error en aprobar_horas_extras:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Error interno del servidor",
+            error: error.message
+        });
+    }
+};
+
+
 
 const crearPrestamoContrato = async (req, res) => {
     try {
@@ -802,5 +897,6 @@ export {
     getAllNombreRutContrato,
     crearPrestamoContrato,     // ✅ Nueva
     eliminarPrestamo,           // ✅ Nueva
+    aprobar_horas_extras         // ✅ Nueva
 
 }

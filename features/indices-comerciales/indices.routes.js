@@ -35,6 +35,8 @@ import {
   obtenerTodosPDFs
 } from './pdfs/pdf.controller.js';
 
+import { ejecutarScraping } from './scrap/scrap.controller.js';// Ejecutar script de scraping (Python)
+
 
 const router = express.Router();
 
@@ -106,5 +108,9 @@ router.post('/cotizacion-empresa', calcularCotizacionEmpresa);
 
 router.post('/prestamo-interno', authenticateToken, crearPrestamoInterno);
 router.get('/prestamos-activos', authenticateToken, getPrestamos);
+
+// Ejecutar script de scraping (Python)
+router.get('/scrap/ejecutar', ejecutarScraping);
+
 
 export default router;

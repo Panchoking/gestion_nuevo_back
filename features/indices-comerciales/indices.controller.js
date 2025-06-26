@@ -1072,7 +1072,7 @@ const eliminarLiquidaciones = async (req, res) => {
 
 const calcularLiquidacionesMultiples = async (req, res) => {
     try {
-        console.log("=== INICIO calcularLiquidacionesMultiples ===");
+        //console.log("=== INICIO calcularLiquidacionesMultiples ===");
         const { trabajadores, valorUF } = req.body;
 
         if (!Array.isArray(trabajadores) || trabajadores.length === 0) {
@@ -1176,10 +1176,10 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 });
             }
 
-            console.log("logs aguinaldo:");
+           /* console.log("logs aguinaldo:");
             console.log("uf", valorUF);
             console.log("aguinaldoufNum : ", aguinaldoUFNum);
-            console.log("aguinaldoCLP : ", aguinaldoCLP);
+            console.log("aguinaldoCLP : ", aguinaldoCLP);*/
 
             // BLOQUE DE ACTUALIZACIÓN DE SUELDO BASE
             try {
@@ -1211,11 +1211,11 @@ const calcularLiquidacionesMultiples = async (req, res) => {
 
 
             // 1️⃣ PASO 1: CÁLCULO DEL SUELDO BRUTO
-            console.log("=== PASO 1: SUELDO BRUTO ===");
+            //console.log("=== PASO 1: SUELDO BRUTO ===");
 
             // Prorrateo del sueldo base
             const sueldoBaseProrrateado = (sueldoBase / 30) * diasTrabajadosNum;
-            console.log("Sueldo Base Prorrateado:", sueldoBaseProrrateado);
+            //console.log("Sueldo Base Prorrateado:", sueldoBaseProrrateado);
 
             // Gratificación prorrateada
             let gratificacion = sueldoBaseProrrateado * 0.25;
@@ -1223,30 +1223,30 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             if (gratificacion > topeGratificacion) {
                 gratificacion = topeGratificacion;
             }
-            console.log("Gratificación:", gratificacion);
+            //console.log("Gratificación:", gratificacion);
 
             // Horas extras
             const factorBase = (28 / 30) / (horasLegales * 4);
             const fhe = factorBase * 1.5;
             const horasExtrasCalculadas = sueldoBase * fhe * horasExtrasNum;
-            console.log("Horas Extras Calculadas:", horasExtrasCalculadas);
+           // console.log("Horas Extras Calculadas:", horasExtrasCalculadas);
 
             // Sueldo bruto total
             const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas + aguinaldoCLP;
-            console.log("SUELDO BRUTO TOTAL:", sueldoBruto);
+           // console.log("SUELDO BRUTO TOTAL:", sueldoBruto);
 
             // 2️⃣ PASO 2: CÁLCULO DE DESCUENTOS LEGALES
-            console.log("=== PASO 2: DESCUENTOS LEGALES ===");
+           // console.log("=== PASO 2: DESCUENTOS LEGALES ===");
 
             // Descuentos previsionales
             const descuentoAFP = sueldoBruto * (tasaAFP / 100);
-            console.log("Descuento AFP:", descuentoAFP);
+            //console.log("Descuento AFP:", descuentoAFP);
 
             const descuentoSalud = sueldoBruto * (planSalud / 100);
-            console.log("Descuento Salud:", descuentoSalud);
+            //console.log("Descuento Salud:", descuentoSalud);
 
             const descuentoCesantia = sueldoBruto * (tasaCesantia / 100);
-            console.log("Descuento Cesantía:", descuentoCesantia);
+            //console.log("Descuento Cesantía:", descuentoCesantia);
 
             // Cálculo del impuesto IUSC
             // Para IUSC usamos gratificación mensual completa (no prorrateada)
@@ -1281,38 +1281,38 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
                 impuestoIUSC = Math.max(0, impuestoIUSC);
             }
-            console.log("valor UTM:", valorUTM);
-            console.log("Impuesto IUSC:", impuestoIUSC);
+           // console.log("valor UTM:", valorUTM);
+            //console.log("Impuesto IUSC:", impuestoIUSC);
 
             // Total descuentos legales
             const totalDescuentosLegales = descuentoAFP + descuentoSalud + descuentoCesantia + impuestoIUSC;
-            console.log("TOTAL DESCUENTOS LEGALES:", totalDescuentosLegales);
+            //console.log("TOTAL DESCUENTOS LEGALES:", totalDescuentosLegales);
 
             // 3️⃣ PASO 3: SUELDO LÍQUIDO LEGAL (después de descuentos legales)
             const sueldoLiquidoLegal = sueldoBruto - totalDescuentosLegales;
-            console.log("SUELDO LÍQUIDO LEGAL:", sueldoLiquidoLegal);
+            //console.log("SUELDO LÍQUIDO LEGAL:", sueldoLiquidoLegal);
 
             // 4️⃣ PASO 4: DESCUENTOS DEL MES
-            console.log("=== PASO 4: DESCUENTOS DEL MES ===");
+           // console.log("=== PASO 4: DESCUENTOS DEL MES ===");
 
             const descuentoPrestamo = totalPrestamos;
-            console.log("Descuento Préstamo:", descuentoPrestamo);
+            //console.log("Descuento Préstamo:", descuentoPrestamo);
 
             const descuentoAnticipo = anticipoNum;
-            console.log("Descuento Anticipo:", descuentoAnticipo);
+            //console.log("Descuento Anticipo:", descuentoAnticipo);
 
             const descuentoAguinaldo = aguinaldoCLP;
-            console.log("Descuento Aguinaldo:", descuentoAguinaldo);
+            //console.log("Descuento Aguinaldo:", descuentoAguinaldo);
             const totalDescuentosMes = descuentoPrestamo + descuentoAnticipo + descuentoAguinaldo;
-            console.log("TOTAL DESCUENTOS DEL MES:", totalDescuentosMes);
+           // console.log("TOTAL DESCUENTOS DEL MES:", totalDescuentosMes);
 
             // 5️⃣ PASO 5: SUELDO LÍQUIDO A PAGAR (final)
             const sueldoLiquidoAPagar = sueldoLiquidoLegal - totalDescuentosMes;
-            console.log("SUELDO LÍQUIDO A PAGAR:", sueldoLiquidoAPagar);
+            //console.log("SUELDO LÍQUIDO A PAGAR:", sueldoLiquidoAPagar);
 
             // Validaciones de anticipo (como advertencias, no errores)
             const porcentajeAnticipo = anticipoNum > 0 ? (anticipoNum / sueldoBase) * 100 : 0;
-            console.log("Porcentaje Anticipo:", porcentajeAnticipo);
+            //console.log("Porcentaje Anticipo:", porcentajeAnticipo);
 
             if (porcentajeAnticipo > 25) {
                 advertencias.push({
