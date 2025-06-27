@@ -1432,7 +1432,7 @@ const obtenerHistorialLiquidaciones = async (req, res) => {
           dp.rut,
           lm.mes,
           lm.anio,
-          lm.version,
+          lm.version, -- versión de la liquidación
           lm.sueldo_bruto,
           lm.sueldo_liquido,
           lm.total_descuentos,
@@ -1450,7 +1450,7 @@ const obtenerHistorialLiquidaciones = async (req, res) => {
       JOIN usuario u ON u.id = lm.id_usuario
       JOIN datos_personales dp ON dp.id_usuario = u.id
       LEFT JOIN pdf_liquidaciones pdf ON pdf.id_liquidacion = lm.id
-      ORDER BY dp.nombre, lm.anio DESC, lm.mes DESC, lm.version DESC
+      ORDER BY dp.nombre, lm.anio DESC, lm.mes DESC, lm.fecha_creacion DESC
     `);
 
         const historialAgrupado = [];
@@ -1462,14 +1462,14 @@ const obtenerHistorialLiquidaciones = async (req, res) => {
                 id: row.id_liquidacion,
                 mes: row.mes,
                 anio: row.anio,
-                version: row.version,
                 sueldo_bruto: row.sueldo_bruto,
                 sueldo_liquido: row.sueldo_liquido,
                 total_descuentos: row.total_descuentos,
                 pdf_id: row.pdf_id,
                 nombre_archivo: row.nombre_archivo,
                 pdf_tamano: row.pdf_tamano,
-                fecha_subida: row.fecha_subida
+                fecha_subida: row.fecha_subida,
+                fecha_creacion: row.fecha_creacion,
             };
 
             if (index === -1) {
