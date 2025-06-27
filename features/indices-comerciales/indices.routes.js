@@ -24,7 +24,8 @@ import {
   updateAFPById,
   updateIUSCByTramo,
   updateAFCById,
-  eliminarLiquidaciones
+  eliminarLiquidaciones,
+  deletePrestamoInterno
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -107,6 +108,8 @@ router.get('/pdf/todos', authenticateToken, obtenerTodosPDFs);
 router.post('/cotizacion-empresa', calcularCotizacionEmpresa);
 
 router.post('/prestamo-interno', authenticateToken, crearPrestamoInterno);
+router.delete('/prestamo-interno/:id', deletePrestamoInterno);
+
 router.get('/prestamos-activos', authenticateToken, getPrestamos);
 
 // Ejecutar script de scraping (Python)

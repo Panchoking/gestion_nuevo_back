@@ -1176,10 +1176,10 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 });
             }
 
-           /* console.log("logs aguinaldo:");
-            console.log("uf", valorUF);
-            console.log("aguinaldoufNum : ", aguinaldoUFNum);
-            console.log("aguinaldoCLP : ", aguinaldoCLP);*/
+            /* console.log("logs aguinaldo:");
+             console.log("uf", valorUF);
+             console.log("aguinaldoufNum : ", aguinaldoUFNum);
+             console.log("aguinaldoCLP : ", aguinaldoCLP);*/
 
             // BLOQUE DE ACTUALIZACIÓN DE SUELDO BASE
             try {
@@ -1229,14 +1229,14 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             const factorBase = (28 / 30) / (horasLegales * 4);
             const fhe = factorBase * 1.5;
             const horasExtrasCalculadas = sueldoBase * fhe * horasExtrasNum;
-           // console.log("Horas Extras Calculadas:", horasExtrasCalculadas);
+            // console.log("Horas Extras Calculadas:", horasExtrasCalculadas);
 
             // Sueldo bruto total
             const sueldoBruto = sueldoBaseProrrateado + gratificacion + horasExtrasCalculadas + aguinaldoCLP;
-           // console.log("SUELDO BRUTO TOTAL:", sueldoBruto);
+            // console.log("SUELDO BRUTO TOTAL:", sueldoBruto);
 
             // 2️⃣ PASO 2: CÁLCULO DE DESCUENTOS LEGALES
-           // console.log("=== PASO 2: DESCUENTOS LEGALES ===");
+            // console.log("=== PASO 2: DESCUENTOS LEGALES ===");
 
             // Descuentos previsionales
             const descuentoAFP = sueldoBruto * (tasaAFP / 100);
@@ -1281,7 +1281,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
                 impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
                 impuestoIUSC = Math.max(0, impuestoIUSC);
             }
-           // console.log("valor UTM:", valorUTM);
+            // console.log("valor UTM:", valorUTM);
             //console.log("Impuesto IUSC:", impuestoIUSC);
 
             // Total descuentos legales
@@ -1293,7 +1293,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             //console.log("SUELDO LÍQUIDO LEGAL:", sueldoLiquidoLegal);
 
             // 4️⃣ PASO 4: DESCUENTOS DEL MES
-           // console.log("=== PASO 4: DESCUENTOS DEL MES ===");
+            // console.log("=== PASO 4: DESCUENTOS DEL MES ===");
 
             const descuentoPrestamo = totalPrestamos;
             //console.log("Descuento Préstamo:", descuentoPrestamo);
@@ -1304,7 +1304,7 @@ const calcularLiquidacionesMultiples = async (req, res) => {
             const descuentoAguinaldo = aguinaldoCLP;
             //console.log("Descuento Aguinaldo:", descuentoAguinaldo);
             const totalDescuentosMes = descuentoPrestamo + descuentoAnticipo + descuentoAguinaldo;
-           // console.log("TOTAL DESCUENTOS DEL MES:", totalDescuentosMes);
+            // console.log("TOTAL DESCUENTOS DEL MES:", totalDescuentosMes);
 
             // 5️⃣ PASO 5: SUELDO LÍQUIDO A PAGAR (final)
             const sueldoLiquidoAPagar = sueldoLiquidoLegal - totalDescuentosMes;
@@ -1701,6 +1701,39 @@ const crearPrestamoInterno = async (req, res) => {
 };
 
 
+// Eliminar un préstamo interno por ID
+const deletePrestamoInterno = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id || isNaN(id)) {
+            return res.status(400).json({ success: false, message: 'ID inválido' });
+        }
+
+        const deleteQuery = `DELETE FROM prestamo_interno WHERE id = ?`;
+        const result = await executeQuery(deleteQuery, [id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'Préstamo no encontrado' });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Préstamo interno eliminado correctamente',
+            result: { id }
+        });
+
+    } catch (error) {
+        console.error('Error al eliminar préstamo interno:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error del servidor'
+        });
+    }
+};
+
+
+
 
 // Obtener todos los préstamos internos con información adicional
 const getPrestamos = async (req, res) => {
@@ -1770,6 +1803,7 @@ export {
     updateIUSCByTramo,
     updateAFCById,
     guardarLiquidacionesMensuales,
-    eliminarLiquidaciones
+    eliminarLiquidaciones,
+    deletePrestamoInterno
 
 };
