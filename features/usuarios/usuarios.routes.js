@@ -18,7 +18,8 @@ import {
     getAllNombreRutContrato,
     crearPrestamoContrato,
     eliminarPrestamo,
-    aprobar_horas_extras
+    aprobar_horas_extras,
+    actualizarPrestamoInterno
 
 
 } from './usuarios.controller.js';
@@ -81,6 +82,7 @@ router.post('/registro/aprobar-horas', aprobar_horas_extras);
 //prestamos
 // En las rutas
 router.post('/prestamos', crearPrestamoContrato);
+router.put('/prestamo-interno/:id', actualizarPrestamoInterno);
 router.delete('/prestamos/:id', eliminarPrestamo);
 
 

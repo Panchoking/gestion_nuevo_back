@@ -813,10 +813,9 @@ const aprobar_horas_extras = async (req, res) => {
 };
 
 
-
-const crearPrestamoContrato = async (req, res) => {
+const crearPrestamoContrato = async (req, res) => {// modificacion se añaden campos opcionales
     try {
-        const { id_contrato, nombre_prestamo, monto_total } = req.body;
+        const { id_contrato, nombre_prestamo, monto_total, cuotas_pagadas = 0, total_cuotas = null } = req.body;
 
         if (!id_contrato || !nombre_prestamo || !monto_total) {
             return res.status(400).json({
@@ -834,9 +833,10 @@ const crearPrestamoContrato = async (req, res) => {
         }
 
         await executeQuery(`
-            INSERT INTO prestamos_contrato (id_contrato, nombre_prestamo, monto_total)
-            VALUES (?, ?, ?)
-        `, [id_contrato, nombre_prestamo, monto]);
+            INSERT INTO prestamos_contrato (
+                id_contrato, nombre_prestamo, monto_total, cuotas_pagadas, total_cuotas
+            ) VALUES (?, ?, ?, ?, ?)
+        `, [id_contrato, nombre_prestamo, monto, cuotas_pagadas, total_cuotas]);
 
         res.status(201).json({
             success: true,
@@ -851,6 +851,49 @@ const crearPrestamoContrato = async (req, res) => {
         });
     }
 };
+
+
+const actualizarPrestamoInterno = async (req, res) => {
+    const { id } = req.params;
+    const {
+        nombre_credito,
+        monto_total,
+        monto_cuota,
+        cantidad_cuotas,
+    } = req.body;
+
+    try {
+        const update = await executeQuery(`
+            UPDATE prestamo_interno
+            SET nombre_credito = ?, monto_total = ?, monto_cuota = ?, cantidad_cuotas = ?
+            WHERE id = ?
+        `, [
+            nombre_credito,
+            monto_total,
+            monto_cuota,
+            cantidad_cuotas,
+            id
+        ]);
+
+        res.json({
+            success: true,
+            message: 'Préstamo actualizado correctamente',
+            result: update
+        });
+    } catch (error) {
+        console.error('❌ Error al actualizar el préstamo interno:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Error al actualizar el préstamo',
+            error: error.message
+        });
+    }
+};
+
+
+
+
+
 
 const eliminarPrestamo = async (req, res) => {
     try {
@@ -895,8 +938,9 @@ export {
     getPerfil,
     updatePassword,
     getAllNombreRutContrato,
-    crearPrestamoContrato,     // ✅ Nueva
-    eliminarPrestamo,           // ✅ Nueva
-    aprobar_horas_extras         // ✅ Nueva
+    crearPrestamoContrato,     
+    eliminarPrestamo,           
+    aprobar_horas_extras,
+    actualizarPrestamoInterno  
 
 }
