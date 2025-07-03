@@ -693,7 +693,7 @@ const getAllNombreRutContrato = async (req, res) => {
         for (let colaborador of colaboradores) {
             // Obtener préstamos
             const prestamos = await executeQuery(`
-                SELECT id, nombre_prestamo, monto_total
+                SELECT id, nombre_prestamo, monto_total,cuotas_pagadas , total_cuotas
                 FROM prestamos_contrato
                 WHERE id_contrato = ?
             `, [colaborador.contrato_id]);
@@ -852,26 +852,27 @@ const crearPrestamoContrato = async (req, res) => {// modificacion se añaden ca
     }
 };
 
-
+// fucnion para actualizar un préstamo  pestaña liquidación
+// se actualizan los campos nombre_credito, monto_total, monto_cuota, cantidad
 const actualizarPrestamoInterno = async (req, res) => {
     const { id } = req.params;
     const {
-        nombre_credito,
+        nombre_prestamo,
         monto_total,
-        monto_cuota,
-        cantidad_cuotas,
+        cuotas_pagadas,
+        total_cuotas,
     } = req.body;
 
     try {
         const update = await executeQuery(`
-            UPDATE prestamo_interno
-            SET nombre_credito = ?, monto_total = ?, monto_cuota = ?, cantidad_cuotas = ?
+            UPDATE prestamos_contrato
+            SET nombre_prestamo = ?, monto_total = ?, cuotas_pagadas = ?, total_cuotas = ?
             WHERE id = ?
         `, [
-            nombre_credito,
+            nombre_prestamo,
             monto_total,
-            monto_cuota,
-            cantidad_cuotas,
+            cuotas_pagadas,
+            total_cuotas,
             id
         ]);
 

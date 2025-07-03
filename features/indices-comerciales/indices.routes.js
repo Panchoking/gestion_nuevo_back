@@ -36,7 +36,7 @@ import {
   obtenerTodosPDFs
 } from './pdfs/pdf.controller.js';
 
-import { ejecutarScraping } from './scrap/scrap.controller.js';// Ejecutar script de scraping (Python)
+import { ejecutarScraping,ejecutarScrapingPrestamosPDF } from './scrap/scrap.controller.js';// Ejecutar script de scraping (Python)
 
 
 const router = express.Router();
@@ -114,6 +114,7 @@ router.get('/prestamos-activos', authenticateToken, getPrestamos);
 
 // Ejecutar script de scraping (Python)
 router.get('/scrap/ejecutar', ejecutarScraping);
+router.get('/scrap-prestamos', ejecutarScrapingPrestamosPDF);
 
 
 export default router;

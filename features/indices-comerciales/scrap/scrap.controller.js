@@ -159,3 +159,122 @@ export const ejecutarScraping = (req, res) => {
     }
   });
 };
+
+
+
+//logica scrapp pdf
+
+
+// scrap.controller.js
+
+export const ejecutarScrapingPrestamosPDF = (req, res) => {
+  const { archivo } = req.query;
+
+  if (!archivo) {
+    return res.status(400).json({ error: 'Debes proporcionar el nombre del archivo PDF a procesar.' });
+  }
+
+  const rutaScript = path.join(__dirname, 'extraer_prestamos_pdf.py'); // nuevo script
+  const rutaArchivo = path.join(rutaArchivosScrap, archivo);
+
+  if (!fs.existsSync(rutaArchivo)) {
+    console.error(`❌ Archivo no encontrado: ${rutaArchivo}`);
+    return res.status(404).json({ error: 'El archivo especificado no existe.' });
+  }
+
+  const comando = `python "${rutaScript}" "${rutaArchivo}"`;
+
+  console.log(`🔄 Iniciando procesamiento de PDF de préstamos: ${archivo}`);
+
+  exec(comando, (error, stdout, stderr) => {
+    const logs = [];
+
+    if (stderr) {
+      stderr.trim().split('\n').forEach(line => {
+        if (line.trim()) {
+          try {
+            const logEntry = JSON.parse(line);
+            logs.push(logEntry);
+            console.log(`[${logEntry.level || 'INFO'}] ${logEntry.timestamp || new Date().toISOString()}: ${logEntry.message}`);
+          } catch {
+            logs.push({
+              timestamp: new Date().toISOString(),
+              level: 'INFO',
+              message: line,
+              raw: true
+            });
+            console.log(`[LOG] ${line}`);
+          }
+        }
+      });
+    }
+
+    try {
+      fs.unlinkSync(rutaArchivo);
+      console.log('🧹 Archivo temporal eliminado correctamente');
+    } catch (err) {
+      console.warn('⚠️ No se pudo eliminar el archivo:', err.message);
+    }
+
+    if (error) {
+      console.error('❌ Error al ejecutar script:', error.message);
+      return res.status(500).json({
+        error: error.message,
+        logs,
+        processingInfo: {
+          archivo,
+          rutaCompleta: rutaArchivo,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    try {
+      const data = JSON.parse(stdout);
+
+      if (data.error) {
+        return res.status(400).json({
+          error: data.error,
+          logs,
+          processingInfo: {
+            archivo,
+            rutaCompleta: rutaArchivo,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+
+      const totalColumnas = Object.keys(data).length;
+      const totalRegistros = totalColumnas > 0 ? Math.max(...Object.values(data).map(arr => arr.length)) : 0;
+
+      res.json({
+        mensaje: '✅ Script ejecutado correctamente (PDF préstamos)',
+        data,
+        logs,
+        processingStats: {
+          totalColumnas,
+          totalRegistros,
+          columnasEncontradas: Object.keys(data),
+          archivo,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (parseError) {
+      console.error('❌ Error al parsear salida del script:', parseError.message);
+      console.error('📄 Salida recibida:', stdout);
+
+      res.status(500).json({
+        error: 'Error al procesar datos del script.',
+        logs,
+        rawOutput: stdout,
+        parseError: parseError.message,
+        processingInfo: {
+          archivo,
+          rutaCompleta: rutaArchivo,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+  });
+};
