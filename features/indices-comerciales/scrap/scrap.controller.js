@@ -9,6 +9,13 @@ const __dirname = path.dirname(__filename);
 // Ruta correcta a la carpeta de archivos cargados
 const rutaArchivosScrap = path.join(__dirname, '../../../archivos_scrap');
 
+// 🔧 FUNCIÓN AUXILIAR: Obtener el path correcto de Python
+const getPythonPath = () => {
+  return process.platform === 'win32' 
+    ? path.join(process.cwd(), '.venv', 'Scripts', 'python.exe')
+    : path.join(process.cwd(), '.venv', 'bin', 'python');
+};
+
 export const ejecutarScraping = (req, res) => {
   const { archivo } = req.query;
 
@@ -25,9 +32,12 @@ export const ejecutarScraping = (req, res) => {
     return res.status(404).json({ error: 'El archivo especificado no existe.' });
   }
 
-  const comando = `python "${rutaScript}" "${rutaArchivo}"`;
+  // 🔧 USAR PYTHON DEL ENTORNO VIRTUAL
+  const pythonPath = getPythonPath();
+  const comando = `"${pythonPath}" "${rutaScript}" "${rutaArchivo}"`;
   
   console.log(`🔄 Iniciando procesamiento de: ${archivo}`);
+  console.log(`⚡ Usando Python: ${pythonPath}`);
 
   exec(comando, (error, stdout, stderr) => {
     // Array para almacenar todos los logs
@@ -95,6 +105,7 @@ export const ejecutarScraping = (req, res) => {
         processingInfo: {
           archivo: archivo,
           rutaCompleta: rutaArchivo,
+          pythonPath: pythonPath,
           timestamp: new Date().toISOString()
         }
       });
@@ -114,6 +125,7 @@ export const ejecutarScraping = (req, res) => {
           processingInfo: {
             archivo: archivo,
             rutaCompleta: rutaArchivo,
+            pythonPath: pythonPath,
             timestamp: new Date().toISOString()
           }
         });
@@ -137,6 +149,7 @@ export const ejecutarScraping = (req, res) => {
           totalRegistros,
           columnasEncontradas: Object.keys(data),
           archivo: archivo,
+          pythonPath: pythonPath,
           timestamp: new Date().toISOString()
         }
       });
@@ -153,6 +166,7 @@ export const ejecutarScraping = (req, res) => {
         processingInfo: {
           archivo: archivo,
           rutaCompleta: rutaArchivo,
+          pythonPath: pythonPath,
           timestamp: new Date().toISOString()
         }
       });
@@ -160,13 +174,7 @@ export const ejecutarScraping = (req, res) => {
   });
 };
 
-
-
-//logica scrapp pdf
-
-
-// scrap.controller.js
-
+// 🔧 FUNCIÓN PDF ACTUALIZADA CON EL MISMO PYTHON
 export const ejecutarScrapingPrestamosPDF = (req, res) => {
   const { archivo } = req.query;
 
@@ -174,7 +182,7 @@ export const ejecutarScrapingPrestamosPDF = (req, res) => {
     return res.status(400).json({ error: 'Debes proporcionar el nombre del archivo PDF a procesar.' });
   }
 
-  const rutaScript = path.join(__dirname, 'extraer_prestamos_pdf.py'); // nuevo script
+  const rutaScript = path.join(__dirname, 'extraer_prestamos_pdf.py');
   const rutaArchivo = path.join(rutaArchivosScrap, archivo);
 
   if (!fs.existsSync(rutaArchivo)) {
@@ -182,33 +190,58 @@ export const ejecutarScrapingPrestamosPDF = (req, res) => {
     return res.status(404).json({ error: 'El archivo especificado no existe.' });
   }
 
-  const comando = `python "${rutaScript}" "${rutaArchivo}"`;
+  // 🔧 USAR EL MISMO PYTHON DEL ENTORNO VIRTUAL
+  const pythonPath = getPythonPath();
+  const comando = `"${pythonPath}" "${rutaScript}" "${rutaArchivo}"`;
 
   console.log(`🔄 Iniciando procesamiento de PDF de préstamos: ${archivo}`);
+  console.log(`⚡ Usando Python: ${pythonPath}`);
 
   exec(comando, (error, stdout, stderr) => {
+    // Array para almacenar todos los logs
     const logs = [];
-
+    
+    // Procesar logs de stderr si existen
     if (stderr) {
-      stderr.trim().split('\n').forEach(line => {
+      const stderrLines = stderr.trim().split('\n');
+      
+      stderrLines.forEach(line => {
         if (line.trim()) {
           try {
+            // Intentar parsear como JSON (logs estructurados)
             const logEntry = JSON.parse(line);
             logs.push(logEntry);
-            console.log(`[${logEntry.level || 'INFO'}] ${logEntry.timestamp || new Date().toISOString()}: ${logEntry.message}`);
-          } catch {
+            
+            // Mostrar logs en consola con formato amigable
+            const timestamp = logEntry.timestamp || new Date().toISOString();
+            const level = logEntry.level || 'INFO';
+            const message = logEntry.message || '';
+            
+            console.log(`[${level}] ${timestamp}: ${message}`);
+            
+            // Mostrar detalles adicionales si existen
+            if (logEntry.details) {
+              console.log('   📋 Detalles:', JSON.stringify(logEntry.details, null, 2));
+            }
+            if (logEntry.data) {
+              console.log('   📊 Datos:', JSON.stringify(logEntry.data, null, 2));
+            }
+            
+          } catch (parseError) {
+            // Si no es JSON válido, tratarlo como log plano
+            console.log(`[LOG] ${line}`);
             logs.push({
               timestamp: new Date().toISOString(),
               level: 'INFO',
               message: line,
               raw: true
             });
-            console.log(`[LOG] ${line}`);
           }
         }
       });
     }
 
+    // Eliminar el archivo procesado
     try {
       fs.unlinkSync(rutaArchivo);
       console.log('🧹 Archivo temporal eliminado correctamente');
@@ -216,46 +249,65 @@ export const ejecutarScrapingPrestamosPDF = (req, res) => {
       console.warn('⚠️ No se pudo eliminar el archivo:', err.message);
     }
 
+    // Manejar errores de ejecución
     if (error) {
       console.error('❌ Error al ejecutar script:', error.message);
-      return res.status(500).json({
+      
+      // Buscar logs de error específicos
+      const errorLogs = logs.filter(log => log.level === 'ERROR');
+      
+      return res.status(500).json({ 
         error: error.message,
-        logs,
+        logs: logs,
+        errorDetails: errorLogs.length > 0 ? errorLogs : null,
         processingInfo: {
-          archivo,
+          archivo: archivo,
           rutaCompleta: rutaArchivo,
+          pythonPath: pythonPath,
           timestamp: new Date().toISOString()
         }
       });
     }
 
+    // Intentar parsear la salida principal (stdout)
     try {
       const data = JSON.parse(stdout);
-
+      
+      // Verificar si la respuesta contiene un error
       if (data.error) {
+        console.error('❌ Error reportado por script:', data.error);
+        
         return res.status(400).json({
           error: data.error,
-          logs,
+          logs: logs,
           processingInfo: {
-            archivo,
+            archivo: archivo,
             rutaCompleta: rutaArchivo,
+            pythonPath: pythonPath,
             timestamp: new Date().toISOString()
           }
         });
       }
 
+      // Respuesta exitosa
+      console.log('✅ Script ejecutado correctamente (PDF préstamos)');
+      
+      // Mostrar estadísticas de procesamiento
       const totalColumnas = Object.keys(data).length;
       const totalRegistros = totalColumnas > 0 ? Math.max(...Object.values(data).map(arr => arr.length)) : 0;
-
+      
+      console.log(`📊 Procesamiento completado: ${totalColumnas} columnas, ${totalRegistros} registros`);
+      
       res.json({
         mensaje: '✅ Script ejecutado correctamente (PDF préstamos)',
         data,
-        logs,
+        logs: logs,
         processingStats: {
           totalColumnas,
           totalRegistros,
           columnasEncontradas: Object.keys(data),
-          archivo,
+          archivo: archivo,
+          pythonPath: pythonPath,
           timestamp: new Date().toISOString()
         }
       });
@@ -263,15 +315,16 @@ export const ejecutarScrapingPrestamosPDF = (req, res) => {
     } catch (parseError) {
       console.error('❌ Error al parsear salida del script:', parseError.message);
       console.error('📄 Salida recibida:', stdout);
-
-      res.status(500).json({
+      
+      res.status(500).json({ 
         error: 'Error al procesar datos del script.',
-        logs,
+        logs: logs,
         rawOutput: stdout,
         parseError: parseError.message,
         processingInfo: {
-          archivo,
+          archivo: archivo,
           rutaCompleta: rutaArchivo,
+          pythonPath: pythonPath,
           timestamp: new Date().toISOString()
         }
       });
