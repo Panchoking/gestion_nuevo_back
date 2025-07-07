@@ -685,7 +685,9 @@ const getAllNombreRutContrato = async (req, res) => {
             LEFT JOIN contrato c ON u.id = c.id_usuario
             LEFT JOIN tipo_contrato tc ON tc.id = c.id_tipo_contrato
             LEFT JOIN afp ON afp.id = c.id_afp
-            WHERE u.is_admin = FALSE AND u.is_dummy = FALSE
+            WHERE u.is_admin = FALSE 
+              AND u.is_dummy = FALSE 
+              AND u.activo = TRUE
         `;
 
         const colaboradores = await executeQuery(query);
@@ -693,7 +695,7 @@ const getAllNombreRutContrato = async (req, res) => {
         for (let colaborador of colaboradores) {
             // Obtener préstamos
             const prestamos = await executeQuery(`
-                SELECT id, nombre_prestamo, monto_total,cuotas_pagadas , total_cuotas
+                SELECT id, nombre_prestamo, monto_total, cuotas_pagadas, total_cuotas
                 FROM prestamos_contrato
                 WHERE id_contrato = ?
             `, [colaborador.contrato_id]);
@@ -716,7 +718,7 @@ const getAllNombreRutContrato = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: "Datos de todos los usuarios obtenidos correctamente",
+            message: "Datos de usuarios activos obtenidos correctamente",
             result: colaboradores
         });
 
