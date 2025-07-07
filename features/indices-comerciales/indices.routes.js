@@ -25,7 +25,8 @@ import {
   updateIUSCByTramo,
   updateAFCById,
   eliminarLiquidaciones,
-  deletePrestamoInterno
+  deletePrestamoInterno,
+  crearPrestamosMasivos
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -109,6 +110,7 @@ router.post('/cotizacion-empresa', calcularCotizacionEmpresa);
 
 router.post('/prestamo-interno', authenticateToken, crearPrestamoInterno);
 router.delete('/prestamo-interno/:id', deletePrestamoInterno);
+router.post('/prestamos-masivo', authenticateToken, crearPrestamosMasivos);
 
 router.get('/prestamos-activos', authenticateToken, getPrestamos);
 
