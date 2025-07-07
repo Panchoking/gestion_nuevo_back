@@ -1778,67 +1778,146 @@ const getPrestamos = async (req, res) => {
 };
 
 const crearPrestamosMasivos = async (req, res) => {
-  const prestamos = req.body;
+    const prestamos = req.body;
 
-  if (!Array.isArray(prestamos)) {
-    return res.status(400).json({ message: 'El cuerpo de la solicitud debe ser un arreglo de préstamos.' });
-  }
-
-  try {
-    for (const prestamo of prestamos) {
-      const {
-        id_contrato,
-        nombre_prestamo,
-        monto_total,
-        cuotas_pagadas = 0,
-        total_cuotas = null
-      } = prestamo;
-
-      if (!id_contrato || !nombre_prestamo || !monto_total) {
-        return res.status(400).json({ message: 'Faltan campos requeridos en uno de los préstamos.' });
-      }
-
-      const monto = parseFloat(monto_total);
-      if (isNaN(monto) || monto <= 0) {
-        console.log(`⛔ Monto inválido para contrato ${id_contrato}, préstamo ${nombre_prestamo}`);
-        continue;
-      }
-
-      // Verificar si ya existe el préstamo
-      const existente = await executeQuery(
-        `SELECT id, cuotas_pagadas FROM prestamos_contrato WHERE id_contrato = ? AND nombre_prestamo = ?`,
-        [id_contrato, nombre_prestamo]
-      );
-
-      if (existente.length > 0) {
-        const cuotasExistente = existente[0].cuotas_pagadas ?? 0;
-
-        if (cuotas_pagadas > cuotasExistente) {
-          // Actualizar el préstamo existente con más cuotas
-          await executeQuery(
-            `UPDATE prestamos_contrato SET monto_total = ?, cuotas_pagadas = ?, total_cuotas = ? WHERE id = ?`,
-            [monto, cuotas_pagadas, total_cuotas, existente[0].id]
-          );
-          console.log(`🔄 Préstamo actualizado: ${id_contrato} - "${nombre_prestamo}" con ${cuotas_pagadas} cuotas pagadas`);
-        } else {
-          console.log(`↩️ Préstamo no actualizado (cuotas igual o menores): ${id_contrato} - "${nombre_prestamo}"`);
-        }
-
-        continue;
-      }
-
-      // Insertar nuevo préstamo si no existe
-      await executeQuery(
-        `INSERT INTO prestamos_contrato (id_contrato, nombre_prestamo, monto_total, cuotas_pagadas, total_cuotas)
-         VALUES (?, ?, ?, ?, ?)`,
-        [id_contrato, nombre_prestamo, monto, cuotas_pagadas, total_cuotas]
-      );
+    if (!Array.isArray(prestamos)) {
+        return res.status(400).json({ message: 'El cuerpo de la solicitud debe ser un arreglo de préstamos.' });
     }
 
-    res.status(201).json({ message: 'Préstamos masivos procesados correctamente.' });
-  } catch (error) {
-    console.error("❌ Error al registrar préstamos masivos:", error.message);
-    res.status(500).json({ message: 'Error al registrar préstamos masivos', error: error.message });
+    try {
+        for (const prestamo of prestamos) {
+            const {
+                id_contrato,
+                nombre_prestamo,
+                monto_total,
+                cuotas_pagadas = 0,
+                total_cuotas = null
+            } = prestamo;
+
+            if (!id_contrato || !nombre_prestamo || !monto_total) {
+                return res.status(400).json({ message: 'Faltan campos requeridos en uno de los préstamos.' });
+            }
+
+            const monto = parseFloat(monto_total);
+            if (isNaN(monto) || monto <= 0) {
+                console.log(`⛔ Monto inválido para contrato ${id_contrato}, préstamo ${nombre_prestamo}`);
+                continue;
+            }
+
+            // Verificar si ya existe el préstamo
+            const existente = await executeQuery(
+                `SELECT id, cuotas_pagadas FROM prestamos_contrato WHERE id_contrato = ? AND nombre_prestamo = ?`,
+                [id_contrato, nombre_prestamo]
+            );
+
+            if (existente.length > 0) {
+                const cuotasExistente = existente[0].cuotas_pagadas ?? 0;
+
+                if (cuotas_pagadas > cuotasExistente) {
+                    // Actualizar el préstamo existente con más cuotas
+                    await executeQuery(
+                        `UPDATE prestamos_contrato SET monto_total = ?, cuotas_pagadas = ?, total_cuotas = ? WHERE id = ?`,
+                        [monto, cuotas_pagadas, total_cuotas, existente[0].id]
+                    );
+                    console.log(`🔄 Préstamo actualizado: ${id_contrato} - "${nombre_prestamo}" con ${cuotas_pagadas} cuotas pagadas`);
+                } else {
+                    console.log(`↩️ Préstamo no actualizado (cuotas igual o menores): ${id_contrato} - "${nombre_prestamo}"`);
+                }
+
+                continue;
+            }
+
+            // Insertar nuevo préstamo si no existe
+            await executeQuery(
+                `INSERT INTO prestamos_contrato (id_contrato, nombre_prestamo, monto_total, cuotas_pagadas, total_cuotas)
+         VALUES (?, ?, ?, ?, ?)`,
+                [id_contrato, nombre_prestamo, monto, cuotas_pagadas, total_cuotas]
+            );
+        }
+
+        res.status(201).json({ message: 'Préstamos masivos procesados correctamente.' });
+    } catch (error) {
+        console.error("❌ Error al registrar préstamos masivos:", error.message);
+        res.status(500).json({ message: 'Error al registrar préstamos masivos', error: error.message });
+    }
+};
+
+
+const obtenerPrestamosPorNombreYRut = async (req, res) => {
+  try {
+    const { nombre, rut } = req.query;
+
+    let query = `
+      SELECT 
+          u.id AS id_usuario,
+          dp.nombre,
+          dp.apellido,
+          dp.rut,
+          c.id AS contrato_id,
+          pc.id AS prestamo_id,
+          pc.nombre_prestamo,
+          pc.monto_total,
+          pc.cuotas_pagadas,
+          pc.total_cuotas,
+          pc.total_pagado,
+          pc.total_proyectado
+      FROM usuario u
+      JOIN datos_personales dp ON dp.id_usuario = u.id
+      JOIN contrato c ON c.id_usuario = u.id
+      JOIN prestamos_contrato pc ON pc.id_contrato = c.id
+      WHERE u.is_admin = FALSE AND u.is_dummy = FALSE AND u.activo = TRUE
+    `;
+
+    const params = [];
+
+    if (nombre) {
+      query += ' AND dp.nombre LIKE ?';
+      params.push(`%${nombre}%`);
+    }
+
+    if (rut) {
+      query += ' AND dp.rut = ?';
+      params.push(rut);
+    }
+
+    const resultados = await executeQuery(query, params);
+
+    const prestamosAgrupados = [];
+
+    for (const row of resultados) {
+      const index = prestamosAgrupados.findIndex(u => u.id_usuario === row.id_usuario);
+
+      const prestamo = {
+        id: row.prestamo_id,
+        nombre_prestamo: row.nombre_prestamo,
+        monto_total: row.monto_total,
+        cuotas_pagadas: row.cuotas_pagadas,
+        total_cuotas: row.total_cuotas,
+        total_pagado: row.total_pagado,
+        total_proyectado: row.total_proyectado
+      };
+
+      if (index === -1) {
+        prestamosAgrupados.push({
+          id_usuario: row.id_usuario,
+          nombre: `${row.nombre} ${row.apellido}`,
+          rut: row.rut,
+          prestamos: [prestamo]
+        });
+      } else {
+        prestamosAgrupados[index].prestamos.push(prestamo);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Préstamos agrupados obtenidos correctamente',
+      data: prestamosAgrupados
+    });
+
+  } catch (err) {
+    console.error('❌ Error al obtener préstamos agrupados:', err.message);
+    return res.status(500).json({ success: false, message: 'Error interno', error: err.message });
   }
 };
 
@@ -1870,6 +1949,7 @@ export {
     guardarLiquidacionesMensuales,
     eliminarLiquidaciones,
     deletePrestamoInterno,
-    crearPrestamosMasivos
+    crearPrestamosMasivos,
+    obtenerPrestamosPorNombreYRut
 
 };

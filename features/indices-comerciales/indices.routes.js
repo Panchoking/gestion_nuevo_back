@@ -26,7 +26,8 @@ import {
   updateAFCById,
   eliminarLiquidaciones,
   deletePrestamoInterno,
-  crearPrestamosMasivos
+  crearPrestamosMasivos,
+  obtenerPrestamosPorNombreYRut
 } from './indices.controller.js';
 import verificarAcceso from '../../middlewares/verificarAcceso.js';
 import { authenticateToken } from '../../middlewares/authenticateToken.js';
@@ -113,6 +114,9 @@ router.delete('/prestamo-interno/:id', deletePrestamoInterno);
 router.post('/prestamos-masivo', authenticateToken, crearPrestamosMasivos);
 
 router.get('/prestamos-activos', authenticateToken, getPrestamos);
+
+router.get('/prestamos/historial', authenticateToken, obtenerPrestamosPorNombreYRut);
+
 
 // Ejecutar script de scraping (Python)
 router.get('/scrap/ejecutar', ejecutarScraping);
