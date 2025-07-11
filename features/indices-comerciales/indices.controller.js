@@ -700,6 +700,7 @@ const calcularSueldoBaseDesdeNeto = async (req, res) => {
                 impuestoIUSC = (baseTributableUTM * (tasa / 100) - rebajar) * valorUTM;
                 impuestoIUSC = Math.max(0, impuestoIUSC);
             }
+            //
 
             // Sueldo líquido calculado
             const sueldoLiquidoCalculado = sueldoBruto - descuentoAFP - descuentoSalud - descuentoCesantia - impuestoIUSC;
